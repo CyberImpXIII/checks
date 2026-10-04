@@ -11,10 +11,11 @@
   run. It runs in full only when a caller passes `--names` /
   `CHECKS_ROSTER_NAMES` (tests/test_meta.py RosterAudit runs it planted and
   unplanted).
-- `todo-valid` only checks TODO.md exists with a heading; when a repo has a
-  `todo.json` it says UNCHECKED rather than calling `todo check`. Wire it to
-  tools/todo's CLI once that exists and its JSON output is fixed (contract test
-  in tests/test_contract.py, the same way hooks-installed is held).
+- `todo-valid` now runs `todo check` on a repo with a todo.json (2026-10-04),
+  reading its TEXT output: `todo check` has no `--json`. The reading is held
+  by tests/test_contract.py (real tool: fresh store ok, hand edit red) and
+  tests/test_todo_valid.py (each broken contract is an error). Swap to JSON if
+  todo ever offers it (asked of todo, below).
 - `checks all` runs `hooks copies` once per repo (14 workspace walks). Tokens: none;
   noted only in case a run ever times out (TIMEOUT 300s per check).
 
@@ -77,3 +78,7 @@ from the top, 14 locations, 12 red.
   paths listed as audit patterns); the same `checks.json` `exclude` fix.
 - setup: its check component should install `checks run .` as each repo's
   generic pre-commit step.
+- todo (2026-10-04, via the dispatcher): `todo check` has no `--json`
+  (`./todo -C . check --json` -> "unrecognized arguments", exit 2), so
+  todo-valid parses its text lines. A `--json` with the per-gate results and the
+  failed count would let it stop parsing prose.
