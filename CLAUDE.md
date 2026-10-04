@@ -1,12 +1,62 @@
 # checks
 
-What this repo is for: not written yet. Its owner fills this in, outside the
-shared block below.
+The ONE source of the generic pre-commit gates every repo here runs, and the
+runner that applies them per repo or across the workspace
+(PLAN-tools-folder.md §4 step 3, spec §8). A repo's `./dev.sh check` calls
+`checks run .`; `checks all` gives the whole workspace as one grid. A gate
+is written once here and never re-implemented in a repo.
 
 | doing this | use |
 |---|---|
-| before committing | `./dev.sh check` (a stub that fails until the owner fills in the contract) |
+| before committing | `./dev.sh check` (unit tests, every check's fixtures, this repo's own checks, the roster audit) |
+| run the gates on a repo | `./checks run [PATH]` (exit 1 on any fail or error) |
+| run them everywhere | `./checks all [ROOT] --names <roster names>` -- a repo-by-check grid, then every red cell's findings |
+| what a check proves, how to pass it | `./checks explain <name>` |
+| what the source holds | `./checks list [--json]` (setup's check component should read the `--json`) |
 | what is open | `TODO.md` |
+
+**The checks.** Held equal to `./checks list` by `tests/test_meta.py`.
+
+| check | applies_to | proves |
+|---|---|---|
+| `docs-rows` | `repos:.` | the top CLAUDE.md tool table has a row per repo and a path per row |
+| `help-matches` | `all` | `dev.sh help` lists exactly the subcommands its `case` implements |
+| `hooks-installed` | `all` | the repo's hook copies agree with tools/hooks (`hooks copies`); standalone: present, executable, parse |
+| `no-roster` | `tools` | a tool reads no roster: no roster paths, and (given `--names`) no agent names |
+| `no-secrets` | `all` | nothing credential-shaped would be committed; `.env` and capture folders are ignored |
+| `rules-in-sync` | `all` | CLAUDE.md carries every "belongs in every copy" section, and the constraints verbatim |
+| `todo-valid` | `all` | TODO.md exists and has a heading (`todo check` when tools/todo is wired in) |
+
+**The contract.** A check is `source/<name>.py`, executable, with a
+`# checks: applies_to=... params=...` line in its leading comment block
+(`vocab.json` is the one list of keys, the same shape as tools/hooks'
+`# hooks:` line), an explanation saying `Proves:` and `To pass:`, and
+`source/fixtures/<name>.py` defining `passing(t)` and `failing(t)`. It exits
+0 ok, 2 fail (one line per finding), 3 unchecked (one line saying why).
+Anything else, a timeout, a silent fail or a refused check is `error`, and
+red. Per-repo settings live in the repo's `checks.json`, `{check: {param:
+value}}`; a key no check declares is a fault, never ignored.
+
+**Rules of this repo.**
+- A check that cannot be shown red is not a check: `checks fixtures` requires
+  the failing fixture to fail with the findings it names (`expect`).
+- This tool reads no roster (`./dev.sh audit` runs `no-roster` on itself).
+  Roster names arrive from the caller: `--names a,b` or `CHECKS_ROSTER_NAMES`.
+  Without them, `no-roster`'s names half says UNCHECKED, never ok.
+- The workspace top is two folders up when this tool sits in `tools/` (the
+  rule tools/hooks uses), or `--root`. Without one, checks that need it say
+  UNCHECKED.
+- `checks all` walks repos by the rule `hooks copies` uses (depth 4,
+  dot-folders and `node_modules` pruned, a git repo with a CLAUDE.md, plus the
+  top); `tests/test_contract.py` holds the two equal.
+- Findings in other repos belong to their owners. This repo reports; it never
+  writes outside itself.
+
+**Where this differs from the plan, and why.** Checks are `.py` (the plan
+said `.sh`): they parse markdown and JSON, which bash does badly. The source
+folder is `source/`, not `checks/`, which would collide with the `checks`
+CLI. The workspace is found by location, not by a manifest marker: reading
+the manifest would be reading the roster.
 
 <!-- shared:rules@7867132c3871 -->
 ## Shared rules

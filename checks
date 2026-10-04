@@ -1,0 +1,9 @@
+#!/usr/bin/env python3
+"""The generic pre-commit gates: one source, run per repo or from the top. `checks help`."""
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from checkslib import cli  # noqa: E402
+
+sys.exit(cli.main(sys.argv[1:]))

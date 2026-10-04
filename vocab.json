@@ -1,0 +1,22 @@
+{
+  "_comment": "The declaration vocabulary and the result contract: the one list of keys a check may carry on its `# checks:` line (key=value pairs, in its leading comment block), and the exit codes a check may return. Read by checkslib/decl.py (keys), checkslib/api.py and checkslib/runner.py (results), and meant for whatever installs from this source (setup's check component). tests/test_meta.py holds every key here consumed by the code and every key the code reads present here. A key in neither is an error at parse time.",
+  "keys": {
+    "applies_to": {
+      "required": true,
+      "pattern": "^(all|tools|repos:[^,\\s]+(,[^,\\s]+)*|roles:[^,\\s]+(,[^,\\s]+)*)$",
+      "means": "which repos the runner selects the check for: `all` (every repo and the workspace top), `tools` (a repo whose parent folder is named tools), `repos:<a,b>` (those paths relative to the workspace top; `.` is the top itself), `roles:<a,b>` (only when the caller names one of those roles with --roles: this tool reads no roster, so it cannot place a role itself)"
+    },
+    "params": {
+      "required": false,
+      "default": "",
+      "pattern": "^([a-z][a-z0-9_]*(,[a-z][a-z0-9_]*)*)?$",
+      "means": "the keys the check reads from its section of a repo's checks.json, comma separated; a key a repo sets that the check does not declare is an error, and so is a key the check reads that it does not declare"
+    }
+  },
+  "results": {
+    "0": {"status": "ok", "means": "the check ran in full and found nothing"},
+    "2": {"status": "fail", "means": "one line per finding on stdout"},
+    "3": {"status": "unchecked", "means": "the check could not run (in full) here; one line on stdout says why. Never counted as a pass"}
+  },
+  "_results": "Any other exit code, a timeout, or a check the runner refuses (malformed declaration, no explanation, no failing fixture) is `error`, which fails the run like `fail` does: a check that breaks is red, never green."
+}
