@@ -24,7 +24,7 @@ is written once here and never re-implemented in a repo.
 | `hooks-installed` | `all` | the repo's hook copies agree with tools/hooks (`hooks copies`); standalone: present, executable, parse |
 | `no-roster` | `tools` | a tool reads no roster: no roster paths, and (given `--names`) no agent names |
 | `no-secrets` | `all` | nothing credential-shaped would be committed; `.env` and capture folders are ignored |
-| `rules-in-sync` | `all` | CLAUDE.md carries every "belongs in every copy" section, and the constraints verbatim |
+| `rules-in-sync` | `all` | CLAUDE.md carries every "belongs in every copy" section, and each of the top's constraint bullets by meaning (own preamble and extra bullets allowed; the exact rule: `checks explain rules-in-sync`) |
 | `todo-valid` | `all` | TODO.md exists and has a heading (`todo check` when tools/todo is wired in) |
 
 **The contract.** A check is `source/<name>.py`, executable, with a

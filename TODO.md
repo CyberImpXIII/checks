@@ -29,14 +29,16 @@
   not built: running a repo's suite inside a check recurses through
   `checks run`, and running it in a copy can have side effects (browsers, DB
   writes). Hinges on a per-repo "plant" hook the repo owner provides.
-- `rules-in-sync` holds "Constraints that don't bend" verbatim (word for word,
-  wrapping aside), as PLAN §8 says. Seven repos' copies differ (five from word
-  3, a shorter intro line; data-bridge and scripts replace the bullets with
-  their own) and site-scrapers has none. The fix is theirs (the top's text,
-  additions in a section of their own), unless Jacob prefers "the top's
-  bullets are contained in theirs" -- a small change to the comparison.
 
 ## Unconfirmed suspicions
+
+- `rules-in-sync` (by meaning since 2026-10-04) does not catch a contradiction
+  written in the section's prose or in a repo's own extra bullet without a hedge
+  word (said in its docs). CORE (what each bullet keeps beyond its claim) is a
+  judgement: "Reading a mailbox is not permission", "mark it and hand it back"
+  and the `.env` sentence were ruled example or restatement. If Jacob reads any
+  of them as load-bearing, add it to CORE; addon-bench then goes red (it lacks
+  all three).
 
 - `discover()` repeats `hooks copies`' location rule (a second copy).
   tests/test_contract.py holds them equal on a fixture workspace, but only for
@@ -61,6 +63,11 @@ from the top, 14 locations, 12 red.
 - addon-bench: `.env` not git-ignored; constraints section reworded.
 - applications, knowledge-base, chronjobScheduler, data-bridge, scripts:
   constraints section differs from the top's (`./checks one rules-in-sync <repo>`).
+  Superseded 2026-10-04 by the by-meaning compare: addon-bench, applications,
+  knowledge-base and chronjobScheduler now pass it; still red, each lacking the
+  shared bullets (MISSING, the closest bullet named): emailTools (all four, and
+  no "Report a problem" section), data-bridge (all four), scripts (all four),
+  site-scrapers (no section). Relayed through the dispatcher.
 - hooks: `no-roster` fails on `.claude/lib` (its install destination) in
   audit-terms.json, vocab.json, source/lib/write-targets.sh, and on the literal
   `"site-scrapers"` (a package.json name) in two hooks and their tests. Fix in

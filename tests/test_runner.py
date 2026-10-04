@@ -297,7 +297,14 @@ class RealChecks(Case):
 
     def test_rules_in_sync_file_param_changes_the_file_read(self):
         ws = self.tmp / "ws"
-        rules = "## Keep an active TODO\n\nbelongs in every copy\n\n## Constraints that don't bend\n\n- one\n"
+        bullets = ("- **Never send a message, email or reply on Jacob's behalf without asking first.** "
+                   "Same for anything public or irreversible.\n"
+                   "- **Never attempt to bypass bot detection.** A detected wall is a result to report, "
+                   "not an obstacle to route around.\n"
+                   "- **Credential-shaped values are supplied at run time, never stored.**\n"
+                   "- **Report key names, never captured values**, and don't ask Jacob to repeat a secret "
+                   "back to you.\n")
+        rules = "## Keep an active TODO\n\nbelongs in every copy\n\n## Constraints that don't bend\n\n" + bullets
         write(ws / "CLAUDE.md", "# top\n\n" + rules)
         r = repo(ws / "r", {"AGENTS.md": "# r\n\n" + rules})
         res = self.ws_one("rules-in-sync", ws, r)
