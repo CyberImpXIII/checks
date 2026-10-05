@@ -27,6 +27,7 @@ is written once here and never re-implemented in a repo.
 | `no-roster` | `tools` | a tool reads no roster: no roster paths, and (given `--names`) no agent names |
 | `no-secrets` | `all` | nothing credential-shaped would be committed; `.env` and capture folders are ignored |
 | `rules-in-sync` | `all` | CLAUDE.md carries every "belongs in every copy" section, and each rule sentence (bold lead) of the top's constraints, word for word after normalising; every other line ignored (the exact rule: `checks explain rules-in-sync`) |
+| `settings-tracked` | `all` | `.claude/settings.json`, when present, is tracked by git (`ls-files`; staged counts) and matched by no ignore rule (`check-ignore --no-index`), so its hook wiring travels with a clone (PLAN-repo-setup.md §7.9); no file is ok; outside git UNCHECKED |
 | `tree-clean` | `roles:audit` | no uncommitted work in the tree; only under `checks all --roles audit`, never pre-commit |
 | `todo-valid` | `all` | TODO.md exists and has a heading; with a todo.json, `tools/todo/todo check` passes (its FAIL lines are the findings) |
 

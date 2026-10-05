@@ -2,10 +2,11 @@
 
 ## Own bugs
 
-- No `origin`: `setup tools/checks --github` was refused by the permission
-  classifier on 2026-10-04 (public repo creation), so this repo is local only and
-  nothing is pushed. Once Jacob creates `CyberImpXIII/checks` (public, per
-  PLAN-tools-folder.md), add the remote and push.
+- `origin` now EXISTS (seen 2026-10-05: `git@github.com:CyberImpXIII/checks.git`,
+  origin/main at e9e001d), though the agent brief still says "no remote, never
+  push". Commits after e9e001d (bb9abe7 settings.json, the settings-tracked
+  commit) are local only. Open decision for Jacob/dispatcher: whether this
+  repo now pushes (the shared rules say push; the agent brief says never).
 - `./dev.sh check` runs `no-roster` on this repo without roster names (this tool
   must not read the roster), so the names half is UNCHECKED in the pre-commit
   run. It runs in full only when a caller passes `--names` /
@@ -151,6 +152,12 @@ from the top, 14 locations, 12 red.
   prints `{"ok": false, "error": ...}`, red under check-json by design (no
   `checks`); a stub printing a schema-valid red document (one `error` check,
   role code) would fail for the stated reason instead of on shape.
+- 2026-10-05, via the dispatcher (settings-tracked, PLAN-repo-setup.md §7.9):
+  applies_to=all, so `checks all` is red for hooks, hub and todo until each
+  commits its own `.claude/settings.json` (their agents are doing it in the same
+  wave). Not run workspace-wide here (brief: `checks all` is heavy); settle per
+  repo: `tools/checks/checks one settings-tracked tools/<x>`. The workspace top
+  is not a git repo, so its cell is UNCHECKED by design.
 - todo (2026-10-04, via the dispatcher): `todo check` has no `--json`
   (`./todo -C . check --json` -> "unrecognized arguments", exit 2), so
   todo-valid parses its text lines. A `--json` with the per-gate results and the
