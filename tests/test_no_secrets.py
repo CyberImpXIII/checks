@@ -4,9 +4,13 @@ the staged copy of every path whose index entry differs from it
 gate-off probe), a staged deletion is still scanned, `allow` exempts a staged
 copy too, and `checks one no-secrets PATH --json` keeps the one-result shape
 setup's pre-commit reads (`.results[0].check == "no-secrets"`, `.status`)."""
+import os
+import re
+import subprocess
+import sys
 import unittest
 
-from tests.helpers import Case, git, repo, write
+from tests.helpers import TOOL_ROOT, Case, git, repo, write
 
 FAKE = "gh" + "p_" + "A1b2" * 9          # a GitHub token SHAPE, never a value
 IGNORE = ".env\n"
@@ -65,6 +69,32 @@ class NoSecretsStaged(Case):
         git(r, "add", "fixtures/f.txt")
         write(r / "fixtures" / "f.txt", "t = none\n")
         self.assertEqual(self.result(r)["status"], "ok")
+
+
+HOOKS = TOOL_ROOT.parent / "hooks"
+PARITY = HOOKS / "tests" / "test_secret_shapes.py"
+
+
+class ShapesAgreeWithTheWriteTimeHook(unittest.TestCase):
+    """SHAPES has a second copy, in ERE, in tools/hooks' no-secrets.sh. Two
+    copies on purpose: an installed hook copy must work with nothing beside it
+    (no tools/checks, no data file to ship and miss), and grep's ERE is not
+    Python's re. The agreement test is hooks' (same kinds both ways, same
+    verdict on every sample); it is run from here too, so a SHAPES edit is red
+    in THIS suite, not first in the next hooks run. Skipped, saying so, only
+    when tools/hooks is not beside this tool."""
+
+    @unittest.skipUnless(PARITY.is_file(), "no tools/hooks/tests/test_secret_shapes.py beside this tool")
+    def test_hooks_parity_test_passes_with_nothing_skipped(self):
+        env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")     # write nothing into tools/hooks
+        p = subprocess.run([sys.executable, "-m", "unittest", "-v", "tests.test_secret_shapes"], cwd=HOOKS,
+                           capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL)
+        out = p.stdout + p.stderr
+        self.assertEqual(p.returncode, 0, out[-2000:])
+        self.assertRegex(out, r"\nOK\s*$", out[-2000:])
+        self.assertNotIn("skipped", out, "the parity test skipped: it did not find this tool's no-secrets.py")
+        ran = re.search(r"Ran (\d+) test", out)
+        self.assertTrue(ran and int(ran.group(1)) > 0, out[-2000:])
 
 
 if __name__ == "__main__":

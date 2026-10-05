@@ -138,15 +138,23 @@
   §3 row 1 ("commits name the agent") has no CLAUDE.md section, so no row:
   a gate without a rule. When hooks lands primary-guard/push-gate/no-secrets.sh,
   rules-gated prints `landed:` for them: flip those rows to active here.
-  Seen 2026-10-05: `landed: 'primary-guard'` already prints, from tools/hooks'
-  UNCOMMITTED files; left planned until hooks commits them.
-- `./dev.sh check` red 2026-10-05 (rules-gated commit): hooks-installed and the
-  four tests.test_contract.WithHooks cases, all from tools/hooks mid-edit
-  (`git status` there: untracked primary-guard.sh, push-gate.sh, no-secrets.sh,
-  lib/ledger.sh, with tests the source check does not find). Rerun once hooks
-  commits. unverified: hooks' new no-secrets.sh hook holds a second copy of the
-  credential shapes in source/no-secrets.py here (two copies, nothing holding
-  them equal) -- settle: `grep -n 'AKIA\|gh\[' tools/hooks/source/hooks/no-secrets.sh`.
+  Done 2026-10-05 after hooks 702bd2d/e9d382a: primary-guard, push-gate,
+  no-secrets-write and no-add-all (row 4's git-stamp half) are active; row 4's
+  pre-commit ledger half stays planned as stage-own-paths (setup). Shared-block
+  repos now 25 rows (12 gated, 8 planned, 5 prose).
+- `./dev.sh check` still red after hooks committed (2026-10-05): the
+  "Own bugs" lib item above, now two libs (`.claude/lib/ledger.sh`,
+  `write-targets.sh`: user scope never covers a lib), in hooks-installed and
+  tests.test_contract.WithHooks (settings='registered'); plus hooks-installed
+  listing every shared hook missing from this repo's .claude/hooks (setup
+  installs copies, or the user-scope proposal is applied). Not a fault here.
+- SHAPES has two copies on purpose (decided 2026-10-05): source/no-secrets.py
+  (Python re) and tools/hooks' no-secrets.sh (ERE, with its own \b
+  emulation). One data file was rejected: a hook copy must work with nothing
+  beside it, so the file would be one more lib to install and miss, and a
+  hook present without its data enforces nothing (the worst state). Held
+  equal by hooks' tests/test_secret_shapes.py; tests/test_no_secrets.py runs
+  it from here and fails on a skip (planted drift AKIA->AKIB: red).
 - no-secrets (2026-10-05): scans the index too (staged copies that differ from
   the working tree), no mode switch. A blob over MAX_BYTES or binary is skipped
   as in the tree scan. If `git diff`/`ls-files`/`cat-file` fails it is a

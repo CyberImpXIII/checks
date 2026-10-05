@@ -41,6 +41,10 @@ NAMES = [
     (re.compile(r"(^|/)(credentials|token)\.json$"), "credentials file"),
 ]
 # Each pattern is written so that it does not match its own source text.
+# A second copy, in ERE, is tools/hooks' no-secrets.sh (the write-time gate; a
+# hook copy must work with nothing beside it). Change both: tools/hooks'
+# tests/test_secret_shapes.py holds them equal, and tests/test_no_secrets.py
+# runs it from here.
 SHAPES = [
     (re.compile(r"sk-ant-[A-Za-z0-9_-]{20,}"), "Anthropic API key"),
     (re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9]{32,}"), "OpenAI API key"),
