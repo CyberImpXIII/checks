@@ -7,35 +7,20 @@
 # truncated its own help while the tool kept working.
 # Documented: in the help output, the lines at the indent of the first
 # indented line that starts with a lowercase word (an optional `./dev.sh `
-# prefix allowed). Implemented: the arms of the last top-level `case ... esac`
+# prefix allowed; the one reader is checkslib/helptext.py). Implemented: the arms of the last top-level `case ... esac`
 # block, nested cases aside, minus the help arm (the one listing -h/--help/"").
 # To pass: add the missing line to usage(), or the missing arm to the case.
 # A git repo with no script fails (it has no pre-commit command); a folder that
 # is not a git repo and has none is UNCHECKED.
 import re
-import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from checkslib import api  # noqa: E402
+from checkslib import api, helptext  # noqa: E402
 
-WORD = re.compile(r"^(\s+)(?:\./dev\.sh\s+)?([a-z][a-z0-9-]*)\b")
 ARM = re.compile(r"^\s*([^\s()]+(?:\|[^\s()]+)*)\)")
 HELP_ALIASES = {'""', "''", "-h", "--help"}
-
-
-def documented(text):
-    indent, out = None, set()
-    for line in text.splitlines():
-        m = WORD.match(line)
-        if not m:
-            continue
-        if indent is None:
-            indent = m.group(1)
-        if m.group(1) == indent:
-            out.add(m.group(2))
-    return out
 
 
 def implemented(src):
@@ -71,14 +56,13 @@ def main():
     impl = implemented(script.read_text(errors="replace"))
     if impl is None:
         api.done([f"{script.name}: no top-level `case ... esac` dispatch found"])
-    try:
-        p = subprocess.run(["bash", str(script), ctx.param("help_arg", "help")], cwd=ctx.repo,
-                           capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=60)
-    except subprocess.TimeoutExpired:
-        api.done([f"{script.name} {ctx.param('help_arg', 'help')}: timed out"])
-    doc = documented(p.stdout + p.stderr)
+    arg = ctx.param("help_arg", "help")
+    out, why = helptext.run(script, ctx.repo, arg, via_bash=True)
+    if why:
+        api.done([f"{script.name} {arg}: {why}"])
+    doc = helptext.commands(out, script.name)
     if not doc:
-        api.done([f"{script.name} {ctx.param('help_arg', 'help')}: printed no subcommand lines"])
+        api.done([f"{script.name} {arg}: printed no subcommand lines"])
     findings = [f"implemented, not in the help: {w}" for w in sorted(impl - doc)]
     findings += [f"in the help, not implemented: {w}" for w in sorted(doc - impl)]
     api.done(findings)

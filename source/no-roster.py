@@ -21,14 +21,12 @@
 # To pass: take what the code needs as an argument from its caller instead of
 # reading it; or, for data that only names a path, add an `exclude` glob; for a
 # name that means something else here, add it to `allow_names`.
-import fnmatch
-import os
 import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from checkslib import api  # noqa: E402
+from checkslib import api, scan  # noqa: E402
 
 # Written so that no pattern matches its own source text.
 PATHS = [
@@ -39,34 +37,11 @@ PATHS = [
     re.compile(r"\bdispatches\.jsonl\b"),
     re.compile(r"\.\./+\.claude\b"),
 ]
-DEFAULT_EXCLUDE = ["*.md", ".claude/*", "tests/*", "test/*"]
-MAX_BYTES = 2_000_000
-
-
-def in_scope(ctx, extra):
-    files = ctx.tracked()
-    if files is None:
-        files = []
-        for d, dirs, names in os.walk(ctx.repo):
-            dirs[:] = [x for x in dirs if x not in (".git", "node_modules", "__pycache__")]
-            files += [str(Path(d, n).relative_to(ctx.repo)) for n in names]
-    globs = DEFAULT_EXCLUDE + list(extra)
-    return [f for f in sorted(files) if not any(fnmatch.fnmatch(f, g) for g in globs)]
-
-
-def text(path):
-    try:
-        if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_BYTES:
-            return None
-        data = path.read_bytes()
-    except OSError:
-        return None
-    return None if b"\0" in data[:8192] else data.decode("utf-8", "replace")
 
 
 def main():
     ctx = api.context()
-    files = in_scope(ctx, ctx.param("exclude", []))
+    files = scan.in_scope(ctx, ctx.param("exclude", []))
     names = None
     if ctx.names is not None:
         allowed = {ctx.repo.name, *ctx.param("allow_names", [])}
@@ -77,7 +52,7 @@ def main():
         name_rx = re.compile(rf"""(["'])({alt})\1|--agent[ =]({alt})\b""")
     findings, scanned = [], 0
     for rel in files:
-        t = text(ctx.repo / rel)
+        t = scan.text(ctx.repo / rel)
         if t is None:
             continue
         scanned += 1
