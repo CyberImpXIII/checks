@@ -142,6 +142,17 @@
   no-secrets-write and no-add-all (row 4's git-stamp half) are active; row 4's
   pre-commit ledger half stays planned as stage-own-paths (setup). Shared-block
   repos now 25 rows (12 gated, 8 planned, 5 prose).
+- 2026-10-05, setup run here (b223fe5, tools/setup 32aeaa9, §7.12 step 2):
+  every shared hook/test/lib is now a repo copy. `./dev.sh check` still RED,
+  two causes, neither a fault here. (1) hooks-installed: 3 drift, not covered
+  (troubleshooting.sh, test-troubleshooting.sh, test-prefer-recipes.sh); setup
+  leaves a drifted copy unchanged, replacing it waits on Jacob (§7.12).
+  (2) tests.test_contract.WithHooks (settings='registered') is a FIXTURE test
+  (scratch repos, no copies), so installing copies here cannot clear it: it is
+  the lib-coverage decision below, unchanged. Also written by setup:
+  services.json skeleton (services-valid OK), .githooks/ (inert,
+  core.hooksPath unset), .claude/settings.proposed.json (ignored, not applied:
+  settings.json is Jacob's).
 - `./dev.sh check` still red after hooks committed (2026-10-05): the
   "Own bugs" lib item above, now two libs (`.claude/lib/ledger.sh`,
   `write-targets.sh`: user scope never covers a lib), in hooks-installed and
