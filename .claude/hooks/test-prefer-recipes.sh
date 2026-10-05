@@ -35,10 +35,17 @@ find_repo() {
   done
   return 1
 }
+# Not finding it at all is a different thing: a lone clone (this test run from
+# tools/hooks/source with no workspace around it) has no recipes to test
+# against. That is UNCHECKED, exit 3, said out loud: neither "all cases passed"
+# nor a failure of the hook. The fixture-free cases below still run, and still
+# fail the run if they fail. `hooks tests` treats UNCHECKED as red inside a
+# workspace, where site-scrapers should be found.
+unchecked=""
 REPO="$(find_repo)" || REPO=""
 if [ -z "$REPO" ]; then
-  echo "  FAIL  site-scrapers NOT FOUND above $DIR -- the hook enforces nothing from here"
-  fails=$((fails + 1))
+  unchecked="site-scrapers not found above $DIR: the recipe cases did not run"
+  echo "  UNCHECKED  $unchecked"
   REPO="/nonexistent"
 else
   echo "recipes from: $REPO"
@@ -137,4 +144,6 @@ fi
 
 echo
 [ "$skips" = 0 ] || echo "$skips skipped (fixtures absent, not failures)"
-if [ "$fails" = 0 ]; then echo "all cases passed"; else echo "$fails FAILED"; exit 1; fi
+if [ "$fails" != 0 ]; then echo "$fails FAILED"; exit 1; fi
+if [ -n "$unchecked" ]; then echo "UNCHECKED: $unchecked"; exit 3; fi
+echo "all cases passed"

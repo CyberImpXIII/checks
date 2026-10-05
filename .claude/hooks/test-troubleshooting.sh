@@ -38,15 +38,25 @@ find_repo() {
   done
   return 1
 }
+# Not finding it at all is a different thing: a lone clone (this test run from
+# tools/hooks/source with no workspace around it) has no recipes to test
+# against. That is UNCHECKED, exit 3, said out loud: neither "all cases passed"
+# nor a failure of the hook. The fixture-free cases below still run, and still
+# fail the run if they fail. `hooks tests` treats UNCHECKED as red inside a
+# workspace, where site-scrapers should be found.
+unchecked=""
 REPO="$(find_repo)" || REPO=""
 if [ -z "$REPO" ]; then
-  echo "  FAIL  site-scrapers NOT FOUND above $DIR -- the hook enforces nothing from here"
-  fails=$((fails + 1))
+  unchecked="site-scrapers not found above $DIR: the recipe cases did not run"
+  echo "  UNCHECKED  $unchecked"
   REPO="/nonexistent"
 else
   echo "recipes from: $REPO"
 fi
 
+# 20000 lines (~300KB) of harmless filler for the long-command cases: more than
+# a pipe buffer holds (64KB), or printf finishes before grep exits.
+FILLER="$(printf '\n: filler %s' $(seq 1 20000))"
 check() {
   local want="$1" desc="$2" cmd="$3"
   printf '{"tool_name":"Bash","tool_input":{"command":%s}}' "$(printf '%s' "$cmd" | jq -Rs .)" \
@@ -78,6 +88,10 @@ if [ -n "$attn" ]; then
   check 2 "verify.js without --attended"          "node verify.js $attn '{}'"
   check 2 "engine.js directly"                    "node engine.js $attn '{\"allowUnverified\":true}'"
   check 2 "qualified target"                      "node lab.js peek $attn#listing '{}'"
+  # A long command: under pipefail, `printf | grep -q` read a MATCH on a large
+  # input as no match (grep exits early, printf takes SIGPIPE, status 141), so
+  # the run below went through. Found 2026-10-04 in no-inline-blobs.sh.
+  check 2 "blocked run early in a long command"   "./scrape.sh $attn '{}'$FILLER"
 else
   skip "blocked-attn cases" "no blocked-attn recipe in this DB"
 fi
@@ -87,6 +101,7 @@ if [ -n "$attn" ]; then
   # The sanctioned next step for this state. Blocking it would leave the recipe
   # permanently stuck, since nothing else can move it.
   check 0 "verify.js --attended is the way OUT"   "node verify.js $attn '{}' --attended"
+  check 0 "--attended early in a long command"    "node verify.js $attn '{}' --attended$FILLER"
   # Reading about it must never be blocked.
   check 0 "query.js site on the same recipe"      "node query.js site $attn"
   check 0 "dev.sh blocked"                        './dev.sh blocked'
@@ -104,4 +119,6 @@ check 0 "empty command"                           ''
 
 echo
 [ "$skips" = 0 ] || echo "$skips skipped (fixtures absent, not failures)"
-if [ "$fails" = 0 ]; then echo "all cases passed"; else echo "$fails FAILED"; exit 1; fi
+if [ "$fails" != 0 ]; then echo "$fails FAILED"; exit 1; fi
+if [ -n "$unchecked" ]; then echo "UNCHECKED: $unchecked"; exit 3; fi
+echo "all cases passed"

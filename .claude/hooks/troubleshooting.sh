@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
+# hooks: applies_to=all
 # Enforces the troubleshooting order: don't retry what is already known to need
 # a person, and don't re-derive a recipe without reading what broke last time.
 # PreToolUse hook on Bash; see ../settings.json.
 # Tests: bash .claude/hooks/test-troubleshooting.sh
 #
-# COPIED INTO EVERY TOOL FOLDER'S .claude/hooks/, because a hook only fires when
-# Claude Code's project dir is the one holding it. site-scrapers holds the
-# canonical copy; `./check-hooks.sh --sync` pushes it everywhere and
-# `./check-hooks.sh` fails on drift or a missing install. Copies rather than
+# INSTALLED INTO EVERY REPO'S .claude/hooks/, because a hook only fires when
+# Claude Code's project dir is the one holding it. The source is tools/hooks
+# (source/hooks/); setup installs from it, and `hooks copies` there fails when
+# a copy differs from it in meaning or a repo lacks one. Change the source,
+# never a copy. The `# hooks:` line above is where this file says it applies
+# (tools/hooks vocab.json). Copies rather than
 # symlinks: a missing hook command exits non-zero, which is read as a block, so a
 # dangling link would refuse every Bash call.
 #
@@ -65,9 +68,9 @@ command=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/nul
 # shell and none of this hook's business.
 runs=false
 edits=false
-printf '%s' "$command" | grep -qE '(scrape\.sh|engine\.js|verify\.js)([[:space:]]|$)' && runs=true
-printf '%s' "$command" | grep -qE 'lab\.js[[:space:]]+(peek|raw|match|params)([[:space:]]|$)' && runs=true
-printf '%s' "$command" | grep -qE '(lab\.js[[:space:]]+set|register\.js)([[:space:]]|$)' && edits=true
+grep -qE '(scrape\.sh|engine\.js|verify\.js)([[:space:]]|$)' <<< "$command" && runs=true
+grep -qE 'lab\.js[[:space:]]+(peek|raw|match|params)([[:space:]]|$)' <<< "$command" && runs=true
+grep -qE '(lab\.js[[:space:]]+set|register\.js)([[:space:]]|$)' <<< "$command" && edits=true
 [ "$runs" = true ] || [ "$edits" = true ] || exit 0
 
 # The target: a hostname-shaped token, optionally #page_type:recipe_name. Taken
@@ -109,7 +112,7 @@ status=$(printf '%s' "$known" | awk -F'\t' -v t="$full" '$1 == t { print $2 }' |
 # An attended run is the SANCTIONED next step for this state, so it is the one
 # thing that must not be blocked.
 if [ "$runs" = true ] && [ "$status" = "blocked-attn" ] \
-   && ! printf '%s' "$command" | grep -q -- '--attended'; then
+   && ! grep -q -- '--attended' <<< "$command"; then
   {
     echo "BLOCKED: ${target} is status=\"blocked-attn\" — this was already tried and failed."
     echo

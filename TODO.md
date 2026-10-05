@@ -52,12 +52,12 @@
   tests in each folder or count skips. unverified: tools/hooks' own suite runs
   each hook test and fails on a skipped case -- settle: `cd tools/hooks &&
   ./dev.sh check` (could not settle: hooks is mid-edit, below).
-- hooks-installed is red in all 14 locations on 2026-10-04 because tools/hooks
-  has uncommitted edits to source/hooks/no-inline-blobs.sh and
-  test-no-inline-blobs.sh (first: every copy "drift"; later: `hooks copies
-  --json` crashes, `AttributeError: 'Namespace' object has no attribute
-  'gate'` in hookslib/cli.py cmd_copies). Another session's work in progress,
-  not reported as a bug; re-run `./checks all` once hooks commits.
+- hooks-installed: tools/hooks committed its source change (0ddb31d,
+  2026-10-04); this repo reinstalled its five drifted copies byte for byte
+  (`hooks copies --gate tools/checks`: ok). Every other location still drifts
+  (56 files, `hooks copies` FAILED), each owner reinstalling their own. The
+  `checks all` grid was NOT re-run for that reason: run it once
+  `cd tools/hooks && ./hooks copies` is clean.
 
 
 ## Reported to other owners
