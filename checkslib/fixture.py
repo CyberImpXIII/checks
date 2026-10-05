@@ -36,14 +36,19 @@ def params(repo, data):
     write(Path(repo) / "checks.json", json.dumps(data, indent=1) + "\n")
 
 
+def git(path, *args):
+    """One git command in the fixture repo, as the fixture author; raises on failure."""
+    return subprocess.run(["git", "-C", str(path), *args], capture_output=True, text=True,
+                          env=dict(os.environ, **GIT_ENV), check=True)
+
+
 def git_repo(path, files=None, commit=True):
     """A git repo at path holding `files` ({relative path: text}), all committed."""
     path = Path(path)
     path.mkdir(parents=True, exist_ok=True)
     for rel, text in (files or {}).items():
         write(path / rel, text, 0o755 if rel.endswith(".sh") or rel == "dev.sh" else 0o644)
-    env = dict(os.environ, **GIT_ENV)
-    run = lambda *a: subprocess.run(["git", "-C", str(path), *a], capture_output=True, text=True, env=env, check=True)
+    run = lambda *a: git(path, *a)  # noqa: E731
     run("init", "-q")
     if commit:
         run("add", "-A")
