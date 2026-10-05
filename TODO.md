@@ -10,26 +10,30 @@
   must not read the roster), so the names half is UNCHECKED in the pre-commit
   run. It runs in full only when a caller passes `--names` /
   `CHECKS_ROSTER_NAMES` (tests/test_meta.py RosterAudit runs it planted and
-  unplanted).
+  unplanted). Still open 2026-10-04: `.claude/agents.sh` has no caller of
+  `checks` and no `names` command (grep for tools/checks, CHECKS_ROSTER: none).
 - `todo-valid` now runs `todo check` on a repo with a todo.json (2026-10-04),
   reading its TEXT output: `todo check` has no `--json`. The reading is held
   by tests/test_contract.py (real tool: fresh store ok, hand edit red) and
   tests/test_todo_valid.py (each broken contract is an error). Swap to JSON if
   todo ever offers it (asked of todo, below).
-- `checks all` runs `hooks copies` once per repo (14 workspace walks). Tokens: none;
-  noted only in case a run ever times out (TIMEOUT 300s per check).
 
 ## Open decisions
 
-- `tree-clean` (PLAN §8) is not built: a clean working tree contradicts a
-  pre-commit check, since uncommitted work is exactly what is about to be
-  committed. Options: run it only from `checks all` (a `--roles audit`-style
-  scope), or drop it. Hinges on whether `checks all` is ever run at a point
-  where a dirty tree means "someone is mid-task".
+- `tree-clean` was built 2026-10-04 as `roles:audit`: it runs only under
+  `checks all --roles audit`, never pre-commit (where uncommitted work is what
+  is about to be committed). If Jacob would rather drop it, delete
+  source/tree-clean.py, its fixture, tests/test_tree_clean.py and its table row.
 - `check-fails` (each repo's `./dev.sh check` shown red on a planted fault) is
-  not built: running a repo's suite inside a check recurses through
-  `checks run`, and running it in a copy can have side effects (browsers, DB
-  writes). Hinges on a per-repo "plant" hook the repo owner provides.
+  still not built, on purpose. Blockers: (1) the fault is repo-specific, so each
+  owner must provide a plant (e.g. a `checks.json` param naming a script that
+  breaks one thing in a copy); none exists; (2) running another repo's suite
+  can write outside the copy (browsers, ~/.proficiently, databases by absolute
+  path), and this tool never writes outside itself; (3) a `git clone --local`
+  copy lacks node_modules and ignored state, so the unplanted run may already
+  be red and prove nothing. Recursion is not a blocker: as `roles:audit` it
+  would not run inside the suite's own `checks run .`. Hinges on (1) and (2):
+  the owners' plants, and Jacob accepting that an audit runs their suites.
 
 ## Unconfirmed suspicions
 
@@ -40,6 +44,22 @@
   and the `.env` sentence were ruled example or restatement. If Jacob reads any
   of them as load-bearing, add it to CORE; addon-bench then goes red (it lacks
   all three).
+- Re-routed items (2026-10-04), checked against `hooks-installed`:
+  knowledge-base "no check-hooks.sh or DECLARED list": covered. `hooks copies`
+  finds every location by walking, so no repo keeps a list; `checks all` runs
+  hooks-installed in knowledge-base (a cell in the grid). scripts item 10
+  ("dev.sh check does not run this folder's hook tests"): covered only in
+  part. hooks-installed holds every copy, test-*.sh included, equal to the one
+  source (the stale-copy cause of the skipped cases), but it does not RUN the
+  tests in each folder or count skips. unverified: tools/hooks' own suite runs
+  each hook test and fails on a skipped case -- settle: `cd tools/hooks &&
+  ./dev.sh check` (could not settle: hooks is mid-edit, below).
+- hooks-installed is red in all 14 locations on 2026-10-04 because tools/hooks
+  has uncommitted edits to source/hooks/no-inline-blobs.sh and
+  test-no-inline-blobs.sh (first: every copy "drift"; later: `hooks copies
+  --json` crashes, `AttributeError: 'Namespace' object has no attribute
+  'gate'` in hookslib/cli.py cmd_copies). Another session's work in progress,
+  not reported as a bug; re-run `./checks all` once hooks commits.
 
 
 ## Reported to other owners

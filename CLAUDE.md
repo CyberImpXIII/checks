@@ -25,6 +25,7 @@ is written once here and never re-implemented in a repo.
 | `no-roster` | `tools` | a tool reads no roster: no roster paths, and (given `--names`) no agent names |
 | `no-secrets` | `all` | nothing credential-shaped would be committed; `.env` and capture folders are ignored |
 | `rules-in-sync` | `all` | CLAUDE.md carries every "belongs in every copy" section, and each of the top's constraint bullets by meaning (own preamble and extra bullets allowed; the exact rule: `checks explain rules-in-sync`) |
+| `tree-clean` | `roles:audit` | no uncommitted work in the tree; only under `checks all --roles audit`, never pre-commit |
 | `todo-valid` | `all` | TODO.md exists and has a heading; with a todo.json, `tools/todo/todo check` passes (its FAIL lines are the findings) |
 
 **The contract.** A check is `source/<name>.py`, executable, with a
