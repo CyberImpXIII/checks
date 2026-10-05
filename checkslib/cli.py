@@ -84,7 +84,7 @@ def _print_repo(rep, head=True):
     for r in rep["results"]:
         first = r["lines"][0] if r["lines"] and r["status"] == "unchecked" else ""
         print(f"  {r['status'].upper():<10} {r['check']}{'  ' + first if first else ''}")
-        if r["status"] in runner.RED:
+        if r["status"] in runner.RED or r["status"] == "ok":    # an ok check's lines are notes it chose to give
             for l in r["lines"][:SHOW]:
                 print(f"               {l}")
             if len(r["lines"]) > SHOW:

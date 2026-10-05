@@ -1,17 +1,25 @@
 #!/usr/bin/env python3
 # checks: applies_to=all
-# Proves: the shared hooks this repo should hold are installed and agree with
-# their one source.
+# Proves: every shared hook this repo should run is installed, either as a repo
+# copy that agrees with its one source or in place at user scope.
 #   In a workspace that holds the hooks tool (<top>/tools/hooks/hooks): asks
-#   `hooks copies <top> --json` and fails on any of THIS repo's files it reports
-#   missing, drift (logic differs from the source) or not-executable. Only this
-#   repo's cells count: another repo's drift is that repo's red, not this one's
-#   (the whole-workspace view is `checks all`, or `hooks copies` from the top).
+#   `hooks copies <top> --json` and reads only that report (never the user
+#   settings themselves). Only THIS repo's cells count: another repo's drift is
+#   that repo's red (the whole-workspace view is `checks all`, or `hooks copies`).
+#   A copy reported missing or drift is COVERED when the report's `user_scope`
+#   has a `kind: source` row for that file (or for the hook whose test it is)
+#   with `registered: true`: the user settings run that hook from its source.
+#   Not covered, and red: `registered: false`, no such row, or no user settings
+#   file. Unknown, and UNCHECKED (never ok): `registered: null` or a
+#   `user_scope.error`. A not-executable copy is red whatever user scope says.
+#   On ok it says which scope covered each hook: `repo copy: <files>` and
+#   `covered by user scope: <files>`. A report not in that shape is an error.
 #   Standalone (a fresh clone, or no hooks tool): there is no source to compare
 #   with, so it checks only that .claude/hooks/ holds at least one hook and that
 #   each is executable and parses (bash -n); each test-*.sh must parse.
-# To pass: re-install from the source (the setup tool's hooks component), or
-# fix the copy; a logic change belongs in tools/hooks/source, never in a copy.
+# To pass: register the shared hooks at user scope (`hooks userscope`, applied
+# by the setup tool), or re-install the copy from the source (setup's hooks
+# component); a logic change belongs in tools/hooks/source, never in a copy.
 import json
 import os
 import subprocess
@@ -23,6 +31,55 @@ from checkslib import api  # noqa: E402
 
 HOOKS_CLI = Path("tools/hooks/hooks")
 FAILING = {"missing", "drift", "not-executable"}
+COVERABLE = {"missing", "drift"}       # a present but broken copy is a fault no user scope fixes
+
+
+def broken(why):
+    """`hooks copies --json` is not in the shape read here: an error, never a guess."""
+    print(f"hooks copies --json did not keep the contract this check reads: {why}"[:400])
+    sys.exit(1)
+
+
+def is_tristate(v):
+    return v is True or v is False or v is None
+
+
+def user_scope(rep):
+    us = rep.get("user_scope")
+    if not isinstance(us, dict):
+        broken("no `user_scope` object")
+    for key in ("exists", "error", "hooks"):
+        if key not in us:
+            broken(f"`user_scope` has no `{key}`")
+    if not isinstance(us["exists"], bool):
+        broken("`user_scope.exists` is not true/false")
+    if us["error"] is not None and not isinstance(us["error"], str):
+        broken("`user_scope.error` is neither null nor text")
+    if not isinstance(us["hooks"], list):
+        broken("`user_scope.hooks` is not a list")
+    for h in us["hooks"]:
+        if not (isinstance(h, dict) and isinstance(h.get("file"), str) and isinstance(h.get("kind"), str)
+                and "registered" in h and is_tristate(h["registered"])
+                and isinstance(h.get("test"), (str, type(None)))):
+            broken(f"a `user_scope.hooks` row is not {{file, kind, test?, registered: true|false|null}}: {h!r}")
+    return us
+
+
+def coverage(us, f):
+    """(True | False | None, why): does user scope run the shared hook copy f stands for?"""
+    if not us["exists"]:
+        return False, "no user settings file"
+    if us["error"] is not None:
+        return None, us["error"]
+    rows = [h for h in us["hooks"] if h["kind"] == "source" and f in (h["file"], h.get("test"))]
+    if not rows:
+        return False, "no shared hook of that name there"
+    regs = [h["registered"] for h in rows]
+    if all(registered is True for registered in regs):
+        return True, ""
+    if any(registered is False for registered in regs):
+        return False, "not registered there"
+    return None, "registered: null"
 
 
 def workspace_mode(ctx, cli):
@@ -36,13 +93,39 @@ def workspace_mode(ctx, cli):
         locations = rep["locations"]
     except (ValueError, KeyError, TypeError):
         api.done([f"hooks copies printed no report (exit {p.returncode}): {p.stderr.strip()[-200:]}"])
+    us = user_scope(rep)
     mine = [loc for loc in locations if loc.get("path") == ctx.rel]
     if not mine:
         api.done(unchecked=f"`hooks copies` does not list {ctx.rel} as a location; its hooks went uncompared")
     files = mine[0].get("files") or []
     if not files:
         api.done(unchecked=f"`hooks copies` expects no hook in {ctx.rel}; nothing to compare")
-    api.done([f"{f['file']}: {f['status']}" for f in files if f.get("status") in FAILING])
+    repo_copy, covered, red, unknown = [], [], [], []
+    for f in files:
+        name, status = f.get("file"), f.get("status")
+        if status == "ok":
+            repo_copy.append(name)
+        elif status in COVERABLE:
+            state, why = coverage(us, name)
+            if state is True:
+                covered.append(name)
+            elif state is False:
+                red.append(f"{name}: {status}; not covered by user scope ({why})")
+            else:
+                unknown.append((name, status, why))
+        elif status in FAILING:
+            red.append(f"{name}: {status}")
+    if red:     # a fail lists every copy not shown covered, the unknown ones too
+        api.done(red + [f"{n}: {s}; coverage by user scope unknown ({why})" for n, s, why in unknown])
+    if unknown:
+        whys = sorted({why for _, _, why in unknown})
+        api.done(unchecked=f"user scope could not tell ({'; '.join(whys)}): coverage unknown for "
+                           + ", ".join(n for n, _, _ in unknown))
+    if repo_copy:
+        print("repo copy: " + ", ".join(repo_copy))
+    if covered:
+        print("covered by user scope: " + ", ".join(covered))
+    api.done()
 
 
 def standalone(ctx, why):

@@ -35,6 +35,18 @@
   would not run inside the suite's own `checks run .`. Hinges on (1) and (2):
   the owners' plants, and Jacob accepting that an audit runs their suites.
 
+- hooks-installed user scope (decision 19, built 2026-10-04): a missing or
+  drifted copy is covered by a `registered: true` user-scope row; a
+  NOT-EXECUTABLE copy is never covered (a copy present but broken is a fault in
+  the repo, and the repo's own settings presumably still run it). The brief named
+  only missing/drift; if Jacob wants not-executable covered too, add it to
+  COVERABLE in source/hooks-installed.py and flip
+  test_not_executable_is_never_covered. Per-repo copies stay until setup ships
+  its half (order: hooks, checks, setup); nothing is removed here.
+- Same change: `checks run`/`one` text now prints an ok check's lines (only
+  hooks-installed gives any: `repo copy:` / `covered by user scope:`).
+  `checks all` still prints red cells only.
+
 ## Unconfirmed suspicions
 
 - `rules-in-sync` checks only the four rule sentences (decision 12 revised,
@@ -52,12 +64,12 @@
   tests in each folder or count skips. unverified: tools/hooks' own suite runs
   each hook test and fails on a skipped case -- settle: `cd tools/hooks &&
   ./dev.sh check` (could not settle: hooks is mid-edit, below).
-- hooks-installed: tools/hooks committed its source change (0ddb31d,
-  2026-10-04); this repo reinstalled its five drifted copies byte for byte
-  (`hooks copies --gate tools/checks`: ok). Every other location still drifts
-  (56 files, `hooks copies` FAILED), each owner reinstalling their own. The
-  `checks all` grid was NOT re-run for that reason: run it once
-  `cd tools/hooks && ./hooks copies` is clean.
+- hooks-installed copies: reinstalled again after tools/hooks ae91098
+  (2026-10-04, commit f92eda2; all six cmp-equal, `hooks copies --gate
+  tools/checks` exit 0). `checks all` re-run the same day: no ERR anywhere;
+  hooks-installed red only in applications and site-scrapers (drift, theirs to
+  reinstall; the real user settings register none of the shared hooks yet, so
+  nothing is covered).
 
 
 ## Reported to other owners
@@ -92,6 +104,11 @@ from the top, 14 locations, 12 red.
   paths listed as audit patterns); the same `checks.json` `exclude` fix.
 - setup: its check component should install `checks run .` as each repo's
   generic pre-commit step.
+- setup (2026-10-04, via the dispatcher, decision 19 step 3): hooks-installed
+  now counts a user-scope registration as installed. Setup's half: apply the
+  `hooks userscope` proposal to the user settings (with Jacob's go-ahead), then
+  stop copying the covered hooks and stop registering them in each repo's
+  .claude/settings.json (else they run twice). Until then the copies stay.
 - todo (2026-10-04, via the dispatcher): `todo check` has no `--json`
   (`./todo -C . check --json` -> "unrecognized arguments", exit 2), so
   todo-valid parses its text lines. A `--json` with the per-gate results and the

@@ -21,7 +21,7 @@ is written once here and never re-implemented in a repo.
 |---|---|---|
 | `docs-rows` | `repos:.` | the top CLAUDE.md tool table has a row per repo and a path per row |
 | `help-matches` | `all` | `dev.sh help` lists exactly the subcommands its `case` implements |
-| `hooks-installed` | `all` | the repo's hook copies agree with tools/hooks (`hooks copies`); standalone: present, executable, parse |
+| `hooks-installed` | `all` | each shared hook runs here: a repo copy that agrees with tools/hooks, or a missing/drifted copy covered by a user-scope registration (both read from `hooks copies --json`; `registered: null` is UNCHECKED); on ok it names `repo copy` vs `covered by user scope`; standalone: present, executable, parse |
 | `no-roster` | `tools` | a tool reads no roster: no roster paths, and (given `--names`) no agent names |
 | `no-secrets` | `all` | nothing credential-shaped would be committed; `.env` and capture folders are ignored |
 | `rules-in-sync` | `all` | CLAUDE.md carries every "belongs in every copy" section, and each rule sentence (bold lead) of the top's constraints, word for word after normalising; every other line ignored (the exact rule: `checks explain rules-in-sync`) |

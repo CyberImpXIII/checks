@@ -51,17 +51,52 @@ class WithHooks(Case):
         self.assertIn("x/y/z/w", ours)
         self.assertNotIn("too/deep/for/the/walk", ours)
 
+    def shim(self, ws, settings):
+        """ws/tools/hooks/hooks: the real tool, told which user settings to read,
+        so this test never depends on (or reads) the real ~/.claude/settings.json."""
+        write(ws / "tools" / "hooks" / "hooks", f'#!/usr/bin/env bash\nexec "{HOOKS}" "$@" --settings "{settings}"\n',
+              0o755)
+
     def test_hooks_installed_red_exactly_when_hooks_copies_says_so(self):
         ws = self.fixture_ws()
-        os.makedirs(ws / "tools", exist_ok=True)
-        os.symlink(HOOKS.parent, ws / "tools" / "hooks")
-        code, rep = copies(ws)
-        self.assertEqual(code, 1, "fixture repos hold no copies: hooks copies must say missing")
+        self.shim(ws, self.tmp / "user" / "settings.json")             # no user settings file
+        p = subprocess.run([str(ws / "tools" / "hooks" / "hooks"), "copies", str(ws), "--json"], capture_output=True,
+                           text=True, stdin=subprocess.DEVNULL, timeout=240)
+        rep = json.loads(p.stdout)
+        self.assertEqual(p.returncode, 1, "fixture repos hold no copies: hooks copies must say missing")
         statuses = {f["status"] for l in rep["locations"] for f in l["files"]}
         self.assertTrue(statuses <= {"ok", "missing", "drift", "not-executable", "extra"}, statuses)
+        self.assertIs(rep["user_scope"]["exists"], False)
         res = self.cli_json("one", "hooks-installed", ws / "a", "--root", ws)[1]["results"][0]
         self.assertEqual(res["status"], "fail")
-        self.assertTrue(all(l.endswith(": missing") for l in res["lines"]), res["lines"])
+        self.assertTrue(all(l.endswith(": missing; not covered by user scope (no user settings file)")
+                            for l in res["lines"]), res["lines"])
+
+    def test_hooks_installed_follows_the_real_user_scope_report(self):
+        """The same missing copies, three user settings: the real `hooks userscope`
+        proposal (registered: covered, ok), unparseable (unknown: unchecked), and
+        one registering none of them (not covered: fail). The input changes the result."""
+        ws = self.fixture_ws()
+        user = self.tmp / "user"
+        proposed = user / "settings.proposed.json"
+        p = subprocess.run([str(HOOKS), "userscope", "--settings", str(user / "settings.json"), "--out", str(proposed)],
+                           capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=120)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.shim(ws, proposed)
+        p = subprocess.run([str(ws / "tools" / "hooks" / "hooks"), "copies", str(ws), "--json"], capture_output=True,
+                           text=True, stdin=subprocess.DEVNULL, timeout=240)
+        files = [f["file"] for l in json.loads(p.stdout)["locations"] if l["path"] == "a" for f in l["files"]]
+        self.assertTrue(files, "hooks copies expects hooks in a fixture repo")
+        cases = {"registered": (proposed, "ok"),
+                 "unparseable": (write(user / "bad.json", "{not json"), "unchecked"),
+                 "registers none": (write(user / "none.json", '{"hooks": {}}\n'), "fail")}
+        for what, (settings, want) in cases.items():
+            with self.subTest(settings=what):
+                self.shim(ws, settings)
+                res = self.cli_json("one", "hooks-installed", ws / "a", "--root", ws)[1]["results"][0]
+                self.assertEqual(res["status"], want, res["lines"])
+                if want == "ok":
+                    self.assertEqual(res["lines"], ["covered by user scope: " + ", ".join(files)])
 
     @unittest.skipUnless(WORKSPACE and (WORKSPACE / "tools" / "checks").is_dir(), WHY)
     def test_real_workspace_agrees_for_this_repo(self):
@@ -70,7 +105,11 @@ class WithHooks(Case):
         self.assertEqual(len(mine), 1)
         bad = [f for f in mine[0]["files"] if f["status"] in ("missing", "drift", "not-executable")]
         res = self.cli_json("one", "hooks-installed", WORKSPACE / "tools" / "checks")[1]["results"][0]
-        self.assertEqual(res["status"], "fail" if bad else "ok", res["lines"])
+        if bad:     # covered or not is the rule, held above against fixed settings; here: never an error
+            self.assertIn(res["status"], ("fail", "unchecked", "ok"), res["lines"])
+        else:
+            self.assertEqual(res["status"], "ok", res["lines"])
+            self.assertEqual(res["lines"], ["repo copy: " + ", ".join(f["file"] for f in mine[0]["files"])])
 
 
 TODO = WORKSPACE / "tools" / "todo" / "todo" if WORKSPACE else None
