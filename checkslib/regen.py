@@ -24,13 +24,12 @@ set; a check started inside it (setup runs `checks run .` as its last step)
 says UNCHECKED instead of rebuilding again, so the two cannot recurse."""
 import os
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-from checkslib import api, contract
+from checkslib import api, contract, proc
 
 CATEGORIES = ("absent", "rebuild", "missing", "drift", "record", "unaccounted")
 GUARD = "CHECKS_REBUILD_ACTIVE"
@@ -100,19 +99,14 @@ def _rebuild(doc, repo, work):
     env[GUARD] = "1"
     env[ORIGIN] = str(repo)
     try:
-        p = subprocess.Popen(argv, cwd=work, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, text=True, start_new_session=True)
+        code, _, err = proc.bounded(argv, work, env, TIMEOUT)
     except OSError as e:
         return [f"rebuild: could not start `{' '.join(doc['rebuild'])}`: {e}"]
-    try:
-        _, err = p.communicate(timeout=TIMEOUT)
-    except subprocess.TimeoutExpired:
-        os.killpg(p.pid, signal.SIGKILL)        # the generator's whole process tree
-        p.communicate()
+    except proc.Timeout:
         raise Broken(f"rebuild `{' '.join(doc['rebuild'])}` did not finish in {TIMEOUT}s")
-    if p.returncode != 0:
+    if code != 0:
         tail = [l for l in (err or "").splitlines() if l.strip()][-1:] or ["(nothing on stderr)"]
-        return [f"rebuild: `{' '.join(doc['rebuild'])}` exited {p.returncode}: {tail[0][:200]}"]
+        return [f"rebuild: `{' '.join(doc['rebuild'])}` exited {code}: {tail[0][:200]}"]
     return []
 
 

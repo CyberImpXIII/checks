@@ -14,7 +14,7 @@ is written once here and never re-implemented in a repo.
 | what a check proves, how to pass it | `./checks explain <name>` |
 | what the source holds | `./checks list [--json]` (setup's check component should read the `--json`) |
 | the one shape of every repo's `dev.sh check --json` | `schema/check-json.schema.json` (read by `checkslib/checkjson.py`, which refuses a keyword it does not enforce); this repo prints it via `checkslib/devjson.py` |
-| the shapes of a repo's contract files (services.json, cli.json, node.json) | `schema/{services,cli,node}.schema.json` (read by `checkslib/contract.py`, one reader for every check; each `x-rules` id is a function there, held equal by `tests/test_contract_files.py`) |
+| the shapes of a repo's contract files (services.json, cli.json, node.json) and of a store's `verify --json` | `schema/{services,cli,node,verify}.schema.json` (read by `checkslib/contract.py`, one reader for every check; each `x-rules` id is a function there, held equal by `tests/test_contract_files.py`) |
 | what is open | `TODO.md` |
 
 **The checks.** Held equal to `./checks list` by `tests/test_meta.py`.
@@ -35,6 +35,7 @@ is written once here and never re-implemented in a repo.
 | `services-valid` | `all` | services.json fits its schema (nothing undeclared) and its rules: one `check` entry, every `run` executable inside the repo, every verb one its program's help lists, `write` verbs within cli.json's; no services.json is UNCHECKED |
 | `settings-tracked` | `all` | `.claude/settings.json`, when present, is tracked by git (`ls-files`; staged counts) and matched by no ignore rule (`check-ignore --no-index`), so its hook wiring travels with a clone (PLAN-repo-setup.md §7.9); no file is ok; outside git UNCHECKED |
 | `tree-clean` | `roles:audit` | no uncommitted work in the tree; only under `checks all --roles audit`, never pre-commit |
+| `stores-exported` | `all` | the store's own `<cli> verify --json` (the CLI cli.json names) reports every exported item `same` against the data repo (`DATA_REPO`, from the caller's environment; unset is UNCHECKED); `differs`/`missing` are findings; the report must fit `schema/verify.schema.json`; no cli.json is UNCHECKED |
 | `todo-valid` | `all` | TODO.md exists and has a heading; with a todo.json, `tools/todo/todo check` passes (its FAIL lines are the findings) |
 
 **The contract.** A check is `source/<name>.py`, executable, with a
@@ -53,6 +54,9 @@ value}}`; a key no check declares is a fault, never ignored.
 - This tool reads no roster (`./dev.sh audit` runs `no-roster` on itself).
   Roster names arrive from the caller: `--names a,b` or `CHECKS_ROSTER_NAMES`.
   Without them, `no-roster`'s names half says UNCHECKED, never ok.
+  Instance data arrives the same way: `stores-exported` takes `DATA_REPO`
+  from the caller's environment and never reads `.claude/local.env`; a
+  fixture supplies it through `Fixture(env=...)`.
 - The workspace top is two folders up when this tool sits in `tools/` (the
   rule tools/hooks uses), or `--root`. Without one, checks that need it say
   UNCHECKED.

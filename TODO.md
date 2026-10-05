@@ -57,6 +57,21 @@
   roster is the roster owner's gate (harness's gen gate), never here. If it is
   ever wanted here, it takes roles from the caller as `--names` does
   (CLAUDE.md "Roster names arrive from the caller"): no second mechanism.
+- stores-exported (2026-10-05, PLAN-repo-setup.md §7.11) is this repo's
+  reading of prose that leaves the seams open: the check runs `<cli> verify
+  --json` with DATA_REPO from the CALLER's environment (never read from
+  .claude/local.env: instance data arrives like `--names`), and reads an item
+  report shaped by schema/verify.schema.json (`same`/`differs`/`missing`/
+  `unavailable`). §7.11's "reuses the check-json schema" is read as: its
+  result shows in `dev.sh check --json` / `checks all`, NOT that verify prints
+  the check-json shape (that shape is per-suite, not per-item). The verify
+  locates `$DATA_REPO/<tool>/` itself; the check does not guess the folder
+  name. Open: who exports DATA_REPO into `checks run`'s environment
+  (setup's `data` component, or each dev.sh sourcing local.env)? Until one
+  does, stores-exported is UNCHECKED everywhere, never a pass. Not built
+  here: §7.11's "path allowlist run over the export" (a state path never in
+  the data repo); it reads the data repo, so it is a check run THERE, with
+  the allowlist from each tool's contract. Decide its home with setup.
 - One CLI per repo (cli.json has one `cli`). A repo with two stores behind
   two CLIs cannot declare it; it would need `cli.json` to become a list.
   Decide when a repo needs it.

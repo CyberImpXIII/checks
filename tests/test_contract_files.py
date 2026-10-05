@@ -38,16 +38,16 @@ def used_keywords(node):
 
 class Schemas(unittest.TestCase):
     def test_each_schema_loads_and_uses_only_enforced_keywords(self):
-        for name in contract.FILES:
+        for name in contract.SCHEMAS:
             with self.subTest(name):
                 s = contract.schema(name)                      # load refuses an unenforced keyword
                 self.assertLessEqual(used_keywords(s) - checkjson.ANNOTATIONS, checkjson.KEYWORDS)
 
     def test_x_rules_equal_the_rules_implemented_per_file(self):
-        for name in contract.FILES:
+        for name in contract.SCHEMAS:
             with self.subTest(name):
                 self.assertEqual(set(contract.schema(name)["x-rules"]), set(contract.RULES[name]))
-        self.assertEqual(set(contract.RULES), set(contract.FILES))
+        self.assertEqual(set(contract.RULES), set(contract.SCHEMAS))
 
     def test_every_object_refuses_an_undeclared_key(self):
         """additionalProperties false at every object level: nothing undeclared."""
@@ -58,7 +58,7 @@ class Schemas(unittest.TestCase):
                 yield from objects(sub, f"{where}.{k}")
             if isinstance(node.get("items"), dict):
                 yield from objects(node["items"], f"{where}[]")
-        for name in contract.FILES:
+        for name in contract.SCHEMAS:
             for where, node in objects(contract.schema(name), name):
                 with self.subTest(where):
                     self.assertIs(node.get("additionalProperties"), False)
@@ -83,6 +83,7 @@ SERVICES = {"name": "r", "tags": ["t"], "services": [{"service": "check", "run":
                                                      {"service": "write", "run": "store.sh", "verbs": ["add"]}]}
 CLIDOC = {"store": "app.db", "cli": "store.sh", "verbs": ["add", "list"]}
 NODEDOC = {"rebuild": ["true"], "generated": ["out.txt"], "record": ["*.md"], "children": ["kid"], "registry": "reg.json"}
+VERIFYDOC = {"items": [{"item": "a", "status": "same"}, {"item": "b", "status": "differs", "detail": "line 2"}]}
 
 
 def _svc(d):
@@ -105,6 +106,7 @@ RULE_MUTANTS = [
     (contract.NODE, "unique", lambda d: d["record"].append("*.md"), "path `*.md` given twice"),
     (contract.NODE, "generated-exact", lambda d: d["generated"].append("gen/*.txt"), "`gen/*.txt` is a glob"),
     (contract.NODE, "disjoint", lambda d: d["generated"].append("kid/x.txt"), "`kid/x.txt` lies under a child"),
+    (contract.VERIFY, "unique", lambda d: d["items"].append({"item": "a", "status": "same"}), "item `a` given twice"),
 ]
 
 
@@ -115,7 +117,7 @@ class Rules(Case):
         cli(self.r / "dev.sh", "check")
         cli(self.r / "store.sh", "add", "list", "drop")
         write(self.r / "plain.txt", "x\n")
-        self.clean = {contract.SERVICES: SERVICES, contract.CLI: CLIDOC, contract.NODE: NODEDOC}
+        self.clean = {contract.SERVICES: SERVICES, contract.CLI: CLIDOC, contract.NODE: NODEDOC, contract.VERIFY: VERIFYDOC}
         for name, doc in self.clean.items():
             write(self.r / name, json.dumps(doc))
 

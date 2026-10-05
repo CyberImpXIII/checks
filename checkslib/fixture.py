@@ -15,11 +15,12 @@ GIT_ENV = {"GIT_AUTHOR_NAME": "fixture", "GIT_AUTHOR_EMAIL": "fixture@example.in
 
 
 class Fixture:
-    def __init__(self, repo, workspace=None, names=None, expect=()):
+    def __init__(self, repo, workspace=None, names=None, expect=(), env=None):
         self.repo = Path(repo)
         self.workspace = Path(workspace) if workspace else None
         self.names = names
         self.expect = list(expect)
+        self.env = dict(env or {})     # what the caller supplies at run time (DATA_REPO), as a real caller's env would
 
 
 def write(path, text, mode=0o644):

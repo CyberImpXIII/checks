@@ -89,8 +89,9 @@ def load_params(repo, entries, refused=()):
     return out, faults
 
 
-def run_one(entry, repo, ws=None, params=None, names=None, timeout=TIMEOUT):
-    env = dict(os.environ)
+def run_one(entry, repo, ws=None, params=None, names=None, timeout=TIMEOUT, env=None):
+    """`env`: extra variables over this process's own (a fixture's caller-supplied values)."""
+    env = dict(os.environ, **(env or {}))
     env[api.ENV_WORKSPACE] = str(ws) if ws else ""
     env[api.ENV_PARAMS] = json.dumps(params or {})
     env.pop(api.ENV_NAMES, None)

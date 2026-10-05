@@ -1,0 +1,29 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "verify.schema.json",
+ "title": "<cli> verify --json",
+ "description": "What a store's CLI prints for `verify --json` (PLAN-repo-setup.md §7.11): one item per thing it exports, each compared with its exported form in the data repo (`$DATA_REPO`, which the CLI reads from its environment). `same`: the export matches the store; `differs`: it does not; `missing`: the store has it, the export does not (or the other way round: `detail` says which); `unavailable`: it could not be compared here (e.g. no network). `stores-exported` validates the output against this schema with checkslib/checkjson.py and enforces each `x-rules` id in checkslib/contract.py. This is tools/checks' reading of §7.11's prose; the stores' owners may refine it.",
+ "type": "object",
+ "additionalProperties": false,
+ "required": ["items"],
+ "properties": {
+  "items": {
+   "type": "array",
+   "minItems": 1,
+   "description": "Every exported item, compared. An empty report is never a pass.",
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["item", "status"],
+    "properties": {
+     "item": {"type": "string", "minLength": 1, "description": "What was compared, e.g. a recipe's name or an exported file's path."},
+     "status": {"enum": ["same", "differs", "missing", "unavailable"]},
+     "detail": {"type": "string", "description": "Why, for anything not `same`: the first difference, which side lacks it, why it could not be compared."}
+    }
+   }
+  }
+ },
+ "x-rules": {
+  "unique": "no item twice: each is compared once"
+ }
+}

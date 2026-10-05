@@ -19,6 +19,8 @@ TOOL_ROOT = Path(__file__).resolve().parent.parent
 SCHEMA_DIR = TOOL_ROOT / "schema"
 SERVICES, CLI, NODE = "services.json", "cli.json", "node.json"
 FILES = (SERVICES, CLI, NODE)
+VERIFY = "verify"                   # not a file: what `<cli> verify --json` prints (stores-exported)
+SCHEMAS = FILES + (VERIFY,)
 GLOB = set("*?[")
 
 
@@ -175,7 +177,14 @@ def _disjoint(doc, repo):
                   if under(p, doc.get("children", []))]
 
 
+# --- verify --json ------------------------------------------------------------
+
+def _verify_unique(doc, repo):
+    return _dupes([i["item"] for i in doc["items"]], "$.items", "item")
+
+
 RULES = {
+    VERIFY: {"unique": _verify_unique},
     SERVICES: {"one-check": _one_check, "run-inside": _run_inside, "run-executable": _run_executable,
                "verb-implemented": _services_verbs, "unique": _services_unique, "write-declared": _write_declared},
     CLI: {"paths-inside": _cli_inside, "cli-executable": _cli_executable, "verb-implemented": _cli_verbs,
@@ -200,6 +209,12 @@ def read(repo, name):
         doc = json.loads(p.read_text())
     except ValueError as e:
         return None, [f"{name}: does not parse ({e})"]
+    return validate(doc, name, repo)
+
+
+def validate(doc, name, repo):
+    """(doc, findings) for a parsed document: None and the structural findings
+    when it does not fit schema/<name>.schema.json, else doc and its rule findings."""
     found = [f"{name}: {f}" for f in checkjson.structure(doc, schema(name))]
     if found:
         return None, found

@@ -24,7 +24,7 @@ def _one(entry, kind, build, entries):
         params, faults = runner.load_params(fx.repo, entries)
         if faults:
             return {"check": entry.name, "fixture": kind, "ok": False, "why": f"fixture's checks.json: {faults}"}
-        r = runner.run_one(entry, fx.repo, fx.workspace, params.get(entry.name), fx.names)
+        r = runner.run_one(entry, fx.repo, fx.workspace, params.get(entry.name), fx.names, env=fx.env)
         want = "ok" if kind == "passing" else "fail"
         if r["status"] != want:
             return {"check": entry.name, "fixture": kind, "ok": False,
