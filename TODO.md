@@ -5,8 +5,11 @@
 - `origin` now EXISTS (seen 2026-10-05: `git@github.com:CyberImpXIII/checks.git`,
   origin/main at e9e001d), though the agent brief still says "no remote, never
   push". Commits after e9e001d (bb9abe7 settings.json, the settings-tracked
-  commit) are local only. Open decision for Jacob/dispatcher: whether this
-  repo now pushes (the shared rules say push; the agent brief says never).
+  commit) are local only. The repo is PUBLIC (`gh repo view`: visibility
+  PUBLIC). 2026-10-05 the dispatcher asked for a push; declined: this agent's
+  generated config says NEVER push, and a push to a public repo needs Jacob's
+  own go-ahead, not an agent message. Open decision for Jacob: allow pushes
+  here (then regenerate the agent config to drop "never push").
 - `./dev.sh check` runs `no-roster` on this repo without roster names (this tool
   must not read the roster), so the names half is UNCHECKED in the pre-commit
   run. It runs in full only when a caller passes `--names` /
