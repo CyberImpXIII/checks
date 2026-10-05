@@ -14,19 +14,25 @@ is written once here and never re-implemented in a repo.
 | what a check proves, how to pass it | `./checks explain <name>` |
 | what the source holds | `./checks list [--json]` (setup's check component should read the `--json`) |
 | the one shape of every repo's `dev.sh check --json` | `schema/check-json.schema.json` (read by `checkslib/checkjson.py`, which refuses a keyword it does not enforce); this repo prints it via `checkslib/devjson.py` |
+| the shapes of a repo's contract files (services.json, cli.json, node.json) | `schema/{services,cli,node}.schema.json` (read by `checkslib/contract.py`, one reader for every check; each `x-rules` id is a function there, held equal by `tests/test_contract_files.py`) |
 | what is open | `TODO.md` |
 
 **The checks.** Held equal to `./checks list` by `tests/test_meta.py`.
 
 | check | applies_to | proves |
 |---|---|---|
+| `accessor` | `all` | a store (`*.db`, `*.sqlite*`, the `stores` param) has a cli.json naming it and its one CLI, cli.json is valid, and no file outside the CLI (and the `impl` param) names the store's file; no store and no cli.json is ok |
 | `check-json` | `roles:audit` | `./dev.sh check --json` prints the one schema (`schema/check-json.schema.json`, PLAN-agent-groups.md §4.4) and keeps its `x-rules` (exit 0 iff ok, ok iff nothing fail/error, counts match failures, ...); the shape, not a green suite; no dev.sh or no `--json` in it is UNCHECKED; audit-only because it runs the suite |
 | `docs-rows` | `repos:.` | the top CLAUDE.md tool table has a row per repo and a path per row |
 | `help-matches` | `all` | `dev.sh help` lists exactly the subcommands its `case` implements |
 | `hooks-installed` | `all` | each shared hook runs here: a repo copy that agrees with tools/hooks, or a missing/drifted copy covered by a user-scope registration (both read from `hooks copies --json`; `registered: null` is UNCHECKED); on ok it names `repo copy` vs `covered by user scope`; standalone: present, executable, parse |
 | `no-roster` | `tools` | a tool reads no roster: no roster paths, and (given `--names`) no agent names |
 | `no-secrets` | `all` | nothing credential-shaped would be committed; `.env` and capture folders are ignored |
+| `regenerate` | `repos:.` | the top regenerates clean: in a fresh clone of what a commit would carry, generated files deleted and node.json's `rebuild` run, zero drift and zero unaccounted files, and no record file touched; no node.json is UNCHECKED |
+| `registry-matches` | `all` | the registry node.json names holds exactly the node's and its children's services.json, row for row, both ways (its `services` object only: roles are the roster's gate); no node.json is UNCHECKED |
+| `rendered-matches` | `all` | each file node.json lists as generated comes back byte for byte when deleted and re-rendered in a scratch copy; no node.json is UNCHECKED; a run nested in a rebuild is UNCHECKED |
 | `rules-in-sync` | `all` | CLAUDE.md carries every "belongs in every copy" section, and each rule sentence (bold lead) of the top's constraints, word for word after normalising; every other line ignored (the exact rule: `checks explain rules-in-sync`) |
+| `services-valid` | `all` | services.json fits its schema (nothing undeclared) and its rules: one `check` entry, every `run` executable inside the repo, every verb one its program's help lists, `write` verbs within cli.json's; no services.json is UNCHECKED |
 | `settings-tracked` | `all` | `.claude/settings.json`, when present, is tracked by git (`ls-files`; staged counts) and matched by no ignore rule (`check-ignore --no-index`), so its hook wiring travels with a clone (PLAN-repo-setup.md §7.9); no file is ok; outside git UNCHECKED |
 | `tree-clean` | `roles:audit` | no uncommitted work in the tree; only under `checks all --roles audit`, never pre-commit |
 | `todo-valid` | `all` | TODO.md exists and has a heading; with a todo.json, `tools/todo/todo check` passes (its FAIL lines are the findings) |

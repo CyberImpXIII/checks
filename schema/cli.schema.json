@@ -1,0 +1,20 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "cli.schema.json",
+ "title": "cli.json",
+ "description": "A repo's one gated CLI over its store (PLAN-routing-tree.md §14.8; the skeleton setup installs is `{store, cli, verbs: []}`): the store's file(s), the CLI that is the only way in, and the verbs it offers. `accessor` validates this file against this schema with checkslib/checkjson.py and enforces each `x-rules` id in checkslib/contract.py, then audits that nothing else in the repo names the store. One CLI per repo: a repo with two CLIs over two stores is an open decision (TODO.md).",
+ "type": "object",
+ "additionalProperties": false,
+ "required": ["store", "cli", "verbs"],
+ "properties": {
+  "store": {"type": ["string", "array"], "minLength": 1, "minItems": 1, "items": {"type": "string", "minLength": 1}, "description": "The store: one path, or a list of paths or globs, relative to the repo root. Its file may be git-ignored (a database usually is)."},
+  "cli": {"type": "string", "minLength": 1, "description": "The executable that is the only way into the store, relative to the repo root."},
+  "verbs": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "The verbs the CLI offers; each must be one `<cli> help` lists. Empty in setup's skeleton."}
+ },
+ "x-rules": {
+  "paths-inside": "`cli` and every store path are relative paths inside the repo: not absolute, no `..` segment",
+  "cli-executable": "`cli` exists and is executable",
+  "verb-implemented": "every verb is a command `<cli> help` lists (checkslib/helptext.py reads the help)",
+  "unique": "no store path twice, no verb twice"
+ }
+}

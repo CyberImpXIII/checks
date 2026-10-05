@@ -10,7 +10,11 @@ tests/test_check_json.py holds the two sets equal.
 
 `validate(stdout, exit_code)` returns findings, one line each, every one found
 (never only the first): `<rule>: <where>: <what>`, where a structural finding's
-rule is `schema` and its where is a JSON path ($.checks[0].status)."""
+rule is `schema` and its where is a JSON path ($.checks[0].status).
+
+`load` and `structure` are also the validator for the contract files' schemas
+(schema/{services,cli,node}.schema.json, read by checkslib/contract.py): one
+validator, so a keyword means the same thing in every schema here."""
 import json
 from pathlib import Path
 
@@ -40,6 +44,9 @@ def _audit(node, where):
     for t in ([types] if isinstance(types, str) else types or []):
         if t not in TYPES:
             raise SchemaError(f"{where}: unknown type {t!r}")
+    extra = node.get("additionalProperties")
+    if extra is not None and extra is not False and not isinstance(extra, dict):
+        raise SchemaError(f"{where}: additionalProperties must be a schema or false")
     for name, sub in (node.get("properties") or {}).items():
         _audit(sub, f"{where}.properties.{name}")
     for key in ("items", "additionalProperties"):
@@ -104,6 +111,8 @@ def structure(value, node, where="$"):
                 out += structure(v, props[k], f"{where}.{k}")
             elif isinstance(node.get("additionalProperties"), dict):
                 out += structure(v, node["additionalProperties"], f"{where}.{k}")
+            elif node.get("additionalProperties") is False:
+                out.append(f"schema: {where}: unknown key `{k}`")
     return out
 
 

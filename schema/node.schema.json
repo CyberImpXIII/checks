@@ -1,0 +1,22 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "node.schema.json",
+ "title": "node.json",
+ "description": "A repo's one config file (PLAN-repo-setup.md §7.10; `children.json` of §7.5 grown): the command that re-renders its generated files, those files, its record files (content, never generated), its children, and where its registry is. `rendered-matches`, `regenerate` and `registry-matches` read it, validated against this schema with checkslib/checkjson.py, each `x-rules` id enforced in checkslib/contract.py. This is tools/checks' reading of §7.10's prose; setup's node mode renders and consumes it.",
+ "type": "object",
+ "additionalProperties": false,
+ "required": ["rebuild", "generated", "record"],
+ "properties": {
+  "rebuild": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}, "description": "The argv that re-renders every generated file in place, run at the root of a scratch copy of the repo (never the repo itself). `{origin}` in any argument becomes the real repo's absolute path, so a generator outside the copy is reachable (e.g. [\"{origin}/../tools/setup/setup\", \".\", \"--node\", \"--rebuild\"]); CHECKS_ORIGIN holds the same path."},
+  "generated": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "Every generated file, one exact path each (never a glob: each is compared on its own), relative to the repo root, committed."},
+  "record": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "The record files: committed as content, never generated. Paths or globs (`PLAN-*.md`)."},
+  "children": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "The child repos, paths relative to this one. Each accounts for itself: nothing under a child is unaccounted here."},
+  "registry": {"type": "string", "minLength": 1, "description": "The node's registry file, relative to the repo root. `registry-matches` reads its `services` object (and nothing else in it)."}
+ },
+ "x-rules": {
+  "paths-inside": "every path in generated, record, children and registry is relative and inside the repo: not absolute, no `..` segment",
+  "unique": "no path twice within generated, record or children",
+  "generated-exact": "a generated path is an exact path, never a glob",
+  "disjoint": "no generated path is matched by a record entry or lies under a child"
+ }
+}

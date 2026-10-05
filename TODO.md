@@ -27,7 +27,47 @@
   `code` view gets no file:line. Per-finding failures would mean parsing
   unittest's and `checks run --json`'s output into rows; not done.
 
+- `./dev.sh check` is RED at HEAD and with the §14.8 gates alike (2026-10-05,
+  confirmed by stashing them): tools/hooks bd0413c added four hooks
+  (ask-first, git-stamp, settings-guard, write-ledger) and a shared
+  `.claude/lib/write-targets.sh`. (1) `checks run .` here: hooks-installed
+  says all nine are missing in this repo and not covered by user scope.
+  (2) tests/test_contract.py WithHooks (settings='registered') expects every
+  missing copy to be covered, but `.claude/lib/write-targets.sh` is a lib, and
+  user scope never covers one ("no shared hook of that name there"). Open:
+  should hooks-installed treat a lib copy as covered when every hook that uses
+  it is covered (a decision for hooks and setup), or should the test's
+  expectation drop the lib? The copies are setup's to install (decision 19).
+  Not fixed here.
+
 ## Open decisions
+
+- The §14.8 contract shapes (2026-10-05): services.json, cli.json and
+  node.json are defined HERE first, as schema/{services,cli,node}.schema.json.
+  This is this repo's reading of PLAN-routing-tree.md §14.8 and
+  PLAN-repo-setup.md §7.10; setup (skeletons, node mode) and hub (the
+  registry) have not built them yet and must adopt or refine these shapes.
+  Choices that hinge on them: "a verb is implemented" means `<run> help` lists
+  it (checkslib/helptext.py, the reader help-matches uses); a `rebuild` is an
+  argv run at the root of a scratch clone, with `{origin}` for the real repo's
+  path; `generated` holds exact paths, `record` may hold globs; the registry
+  is `{"services": {repo path: services.json}}`, and only that object is read.
+- registry-matches and the roster: the generic check compares the registry
+  with the services.json files only. Whether the registry's roles match the
+  roster is the roster owner's gate (harness's gen gate), never here. If it is
+  ever wanted here, it takes roles from the caller as `--names` does
+  (CLAUDE.md "Roster names arrive from the caller"): no second mechanism.
+- One CLI per repo (cli.json has one `cli`). A repo with two stores behind
+  two CLIs cannot declare it; it would need `cli.json` to become a list.
+  Decide when a repo needs it.
+- rendered-matches (all) and regenerate (repos:.) both report drift at the
+  top: one generated file edited by hand is two red cells there. Kept: each
+  says what it proves, and regenerate's count is the whole-top one.
+- accessor matches the store's file NAME as a token (`app.db`, not
+  `myapp.db`/`app.dbx`/`app.db.bak`). A read that builds the path from
+  pieces (`"app" + ".db"`) is not seen: a static audit, said in its
+  explanation by what it matches. A read through a variable defined in an
+  `impl` module is not seen either; `impl` is trusted.
 
 - `check-json` (built 2026-10-05) is `roles:audit`, not `all`, though the
   brief asked for its results "under `checks all`": it runs the repo's whole
@@ -161,6 +201,16 @@ from the top, 14 locations, 12 red.
   wave). Not run workspace-wide here (brief: `checks all` is heavy); settle per
   repo: `tools/checks/checks one settings-tracked tools/<x>`. The workspace top
   is not a git repo, so its cell is UNCHECKED by design.
+- 2026-10-05, via the dispatcher (the five §14.8 gates): site-scrapers is red
+  on `accessor`: `data/failures.db` and `data/scrapers.db` have no cli.json
+  naming their CLI (`tools/checks/checks one accessor site-scrapers`).
+  It is not a pre-commit caller, so it shows only in `checks all`. hub, setup,
+  todo and hooks are green on accessor. setup: install the skeletons
+  (services.json `{name, services: [check entry]}`, cli.json
+  `{store, cli, verbs: []}`) and node.json in node mode, to the shapes in
+  schema/; until then services-valid, registry-matches, rendered-matches and
+  regenerate are UNCHECKED everywhere. hub: render the registry as
+  `{"services": {path: services.json}}` and name it in node.json `registry`.
 - todo (2026-10-04, via the dispatcher): `todo check` has no `--json`
   (`./todo -C . check --json` -> "unrecognized arguments", exit 2), so
   todo-valid parses its text lines. A `--json` with the per-gate results and the
