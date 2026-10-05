@@ -41,11 +41,6 @@
   of them as load-bearing, add it to CORE; addon-bench then goes red (it lacks
   all three).
 
-- `discover()` repeats `hooks copies`' location rule (a second copy).
-  tests/test_contract.py holds them equal on a fixture workspace, but only for
-  repos: `hooks copies` also lists a non-repo folder that HOLDS a hook copy,
-  which `checks all` does not visit. Probe: plant a stray
-  `.claude/hooks/no-inline-blobs.sh` in a plain folder and compare.
 
 ## Reported to other owners
 

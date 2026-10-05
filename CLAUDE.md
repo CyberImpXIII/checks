@@ -48,7 +48,11 @@ value}}`; a key no check declares is a fault, never ignored.
   UNCHECKED.
 - `checks all` walks repos by the rule `hooks copies` uses (depth 4,
   dot-folders and `node_modules` pruned, a git repo with a CLAUDE.md, plus the
-  top); `tests/test_contract.py` holds the two equal.
+  top); `tests/test_contract.py` holds the two equal. The one difference, on
+  purpose and held by the same test: `hooks copies` also lists a plain folder
+  (no git, no CLAUDE.md) that holds a stray hook copy; `checks all` does not,
+  as it is not a repo and has no gates to run. The rule is a second copy
+  rather than a call to `hooks`, so `checks all` does not need tools/hooks.
 - Findings in other repos belong to their owners. This repo reports; it never
   writes outside itself.
 

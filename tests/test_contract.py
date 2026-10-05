@@ -36,12 +36,18 @@ class WithHooks(Case):
 
     def test_discover_equals_hooks_copies_locations(self):
         ws = self.fixture_ws()
+        # A plain folder (no git, no CLAUDE.md) holding a stray hook copy: hooks
+        # lists it, to compare the copy; checks all does not run gates on it,
+        # because it is not a repo. The one known difference, held here.
+        write(ws / "plain" / ".claude" / "hooks" / "prefer-recipes.sh", "#!/usr/bin/env bash\n", 0o755)
         _, rep = copies(ws)
         # hooks also lists a `repos:` destination that is absent (to report it missing);
         # only folders that exist are walked locations.
         theirs = sorted(l["path"] for l in rep["locations"] if (ws / l["path"]).is_dir())
         ours = sorted(runner.rel(p, ws) for p in runner.discover(ws))
-        self.assertEqual(ours, theirs)
+        self.assertIn("plain", theirs)
+        self.assertNotIn("plain", ours)
+        self.assertEqual(ours, [p for p in theirs if p != "plain"])
         self.assertIn("x/y/z/w", ours)
         self.assertNotIn("too/deep/for/the/walk", ours)
 
