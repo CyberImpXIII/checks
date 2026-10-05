@@ -34,29 +34,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from checkslib import api  # noqa: E402
+from checkslib.claudemd import contains, norm, words  # noqa: E402
+from checkslib import claudemd  # noqa: E402
 
 CONSTRAINTS = "Constraints that don't bend"
 EVERY_COPY = "belongs in every copy"
-HEAD = re.compile(r"^## (.+?)\s*$")
-END = re.compile(r"^(## |<!-- /shared)")
 BULLET = re.compile(r"^\s{0,3}[-*+]\s+")
 BOLD_LEAD = re.compile(r"^\*\*(.+?)\*\*")
 
 
 def sections(text):
-    """[(heading, body lines)] for every `## ` heading, the body ending at the next
-    heading or the shared block's end marker."""
-    out, cur = [], None
-    for line in text.splitlines():
-        m = HEAD.match(line)
-        if m:
-            cur = (m.group(1), [])
-            out.append(cur)
-        elif cur is not None and END.match(line):
-            cur = None
-        elif cur is not None:
-            cur[1].append(line)
-    return out
+    """[(heading, body lines)], read by checkslib/claudemd.py (the one reader)."""
+    return [(s.heading, s.lines) for s in claudemd.sections(text)]
 
 
 def bullets(lines):
@@ -81,22 +70,6 @@ def rule_sentence(bullet):
     if m:
         return m.group(1).strip()
     return re.split(r"(?<=[.!?])\s", bullet, maxsplit=1)[0]
-
-
-def words(text):
-    t = text.lower().replace("’", "'").replace("‘", "'")
-    t = re.sub(r"\]\([^)]*\)", " ", t)
-    t = t.replace("'", "")
-    return re.sub(r"[^a-z0-9]+", " ", t).split()
-
-
-def contains(seq, sub):
-    n = len(sub)
-    return n > 0 and any(seq[i:i + n] == sub for i in range(len(seq) - n + 1))
-
-
-def norm(heading):
-    return re.sub(r"\s+", " ", heading.replace("’", "'")).strip().lower()
 
 
 def main():

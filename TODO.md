@@ -126,6 +126,32 @@
   hooks-installed gives any: `repo copy:` / `covered by user scope:`).
   `checks all` still prints red cells only.
 
+- rules-gated (built 2026-10-05, PLAN-hard-gates.md §5, §7 phase 3). Limits,
+  said in its explanation: it proves a gate FILE and a test naming it exist,
+  not that the gate runs here (wiring) nor that its test feeds it a failing
+  input. Seeded counts: top 34 rows (16 gated, 12 planned, 6 prose); a
+  shared-block repo 24 (8 gated, 11 planned, 5 prose). Choices open to the
+  planner: `shared-block-unedited` is planned under "§3" though no §3 row
+  schedules it (setup's `edited locally` is a report, not a gate);
+  `stage-own-paths` (§3 row 4) stays planned with no paths, because git-stamp.sh
+  does not block `git add -A` today (a path would be misreported `landed`).
+  §3 row 1 ("commits name the agent") has no CLAUDE.md section, so no row:
+  a gate without a rule. When hooks lands primary-guard/push-gate/no-secrets.sh,
+  rules-gated prints `landed:` for them: flip those rows to active here.
+  Seen 2026-10-05: `landed: 'primary-guard'` already prints, from tools/hooks'
+  UNCOMMITTED files; left planned until hooks commits them.
+- `./dev.sh check` red 2026-10-05 (rules-gated commit): hooks-installed and the
+  four tests.test_contract.WithHooks cases, all from tools/hooks mid-edit
+  (`git status` there: untracked primary-guard.sh, push-gate.sh, no-secrets.sh,
+  lib/ledger.sh, with tests the source check does not find). Rerun once hooks
+  commits. unverified: hooks' new no-secrets.sh hook holds a second copy of the
+  credential shapes in source/no-secrets.py here (two copies, nothing holding
+  them equal) -- settle: `grep -n 'AKIA\|gh\[' tools/hooks/source/hooks/no-secrets.sh`.
+- no-secrets (2026-10-05): scans the index too (staged copies that differ from
+  the working tree), no mode switch. A blob over MAX_BYTES or binary is skipped
+  as in the tree scan. If `git diff`/`ls-files`/`cat-file` fails it is a
+  finding, never a silent pass.
+
 ## Unconfirmed suspicions
 
 - check-json's run budget is 280s (under the runner's 300s). tools/todo's
@@ -226,6 +252,16 @@ from the top, 14 locations, 12 red.
   schema/; until then services-valid, registry-matches, rendered-matches and
   regenerate are UNCHECKED everywhere. hub: render the registry as
   `{"services": {path: services.json}}` and name it in node.json `registry`.
+- 2026-10-05, via the dispatcher (rules-gated): red where a repo has `## `
+  sections outside setup's block and no own `gates.json`: tools/setup (its
+  "Keeping these rules in sync", CLAUDE.md:259), addon-bench, applications,
+  emailTools, knowledge-base, scripts, site-scrapers (hand copies, no block).
+  Fix per PLAN-hard-gates.md §7a: setup installs a `gates.json` skeleton; each
+  owner classifies its own sections. Only checks and hub run it pre-commit.
+  Planner/dispatcher: §3 row 6 reads "on the staged diff"; no-secrets scans
+  the index plus the working tree (reword the row to say so); §3 row 1 has no
+  rule section in any CLAUDE.md. hooks: §3 row 4's `git add -A` block is not
+  in git-stamp.sh.
 - todo (2026-10-04, via the dispatcher): `todo check` has no `--json`
   (`./todo -C . check --json` -> "unrecognized arguments", exit 2), so
   todo-valid parses its text lines. A `--json` with the per-gate results and the

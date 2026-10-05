@@ -15,6 +15,8 @@ is written once here and never re-implemented in a repo.
 | what the source holds | `./checks list [--json]` (setup's check component should read the `--json`) |
 | the one shape of every repo's `dev.sh check --json` | `schema/check-json.schema.json` (read by `checkslib/checkjson.py`, which refuses a keyword it does not enforce); this repo prints it via `checkslib/devjson.py` |
 | the shapes of a repo's contract files (services.json, cli.json, node.json) and of a store's `verify --json` | `schema/{services,cli,node,verify}.schema.json` (read by `checkslib/contract.py`, one reader for every check; each `x-rules` id is a function there, held equal by `tests/test_contract_files.py`) |
+| classify a rule (gate or prose) | `gates.json` (shared block and the top; its `keys` are the vocabulary), or the repo's own `gates.json`; held by `rules-gated` |
+| read CLAUDE.md sections (headings, the shared block) | `checkslib/claudemd.py`, the one reader (rules-in-sync, rules-gated) |
 | what is open | `TODO.md` |
 
 **The checks.** Held equal to `./checks list` by `tests/test_meta.py`.
@@ -27,10 +29,11 @@ is written once here and never re-implemented in a repo.
 | `help-matches` | `all` | `dev.sh help` lists exactly the subcommands its `case` implements |
 | `hooks-installed` | `all` | each shared hook runs here: a repo copy that agrees with tools/hooks, or a missing/drifted copy covered by a user-scope registration (both read from `hooks copies --json`; `registered: null` is UNCHECKED); on ok it names `repo copy` vs `covered by user scope`; standalone: present, executable, parse |
 | `no-roster` | `tools` | a tool reads no roster: no roster paths, and (given `--names`) no agent names |
-| `no-secrets` | `all` | nothing credential-shaped would be committed; `.env` and capture folders are ignored |
+| `no-secrets` | `all` | nothing credential-shaped would be committed, read in the working tree AND in the staged copy of every path whose index entry differs from it; `.env` and capture folders are ignored |
 | `regenerate` | `repos:.` | the top regenerates clean: in a fresh clone of what a commit would carry, generated files deleted and node.json's `rebuild` run, zero drift and zero unaccounted files, and no record file touched; no node.json is UNCHECKED |
 | `registry-matches` | `all` | the registry node.json names holds exactly the node's and its children's services.json, row for row, both ways (its `services` object only: roles are the roster's gate); no node.json is UNCHECKED |
 | `rendered-matches` | `all` | each file node.json lists as generated comes back byte for byte when deleted and re-rendered in a scratch copy; no node.json is UNCHECKED; a run nested in a rebuild is UNCHECKED |
+| `rules-gated` | `all` | every `## ` rule section of CLAUDE.md has a row (gate, with an existing gate and a test naming it, or `planned` with a plan section; or prose, with why) in `gates.json` here (the shared block, the top) or the repo's own `gates.json`, and every row names a section that exists and a rule quoted from it; on ok prints the gated/planned/prose counts; no workspace is UNCHECKED |
 | `rules-in-sync` | `all` | CLAUDE.md carries every "belongs in every copy" section, and each rule sentence (bold lead) of the top's constraints, word for word after normalising; every other line ignored (the exact rule: `checks explain rules-in-sync`) |
 | `services-valid` | `all` | services.json fits its schema (nothing undeclared) and its rules: one `check` entry, every `run` executable inside the repo, every verb one its program's help lists, `write` verbs within cli.json's; no services.json is UNCHECKED |
 | `settings-tracked` | `all` | `.claude/settings.json`, when present, is tracked by git (`ls-files`; staged counts) and matched by no ignore rule (`check-ignore --no-index`), so its hook wiring travels with a clone (PLAN-repo-setup.md §7.9); no file is ok; outside git UNCHECKED |
@@ -74,7 +77,16 @@ value}}`; a key no check declares is a fault, never ignored.
 said `.sh`): they parse markdown and JSON, which bash does badly. The source
 folder is `source/`, not `checks/`, which would collide with the `checks`
 CLI. The workspace is found by location, not by a manifest marker: reading
-the manifest would be reading the roster.
+the manifest would be reading the roster. The rule registry
+(PLAN-hard-gates.md §5) is `gates.json` HERE, not at the workspace top: the
+top is not a git repo, this repo never writes outside itself, and the
+dispatcher may write only top-level `*.md`. Its rows carry `in` ("shared" for
+setup's block, or repo paths, "." the top); a repo's own sections are
+classified in that repo's own `gates.json` (§7a), rows without `in`. The
+plan's third kind, `principle`, is `prose` with its `why` (Jacob's §8
+answer 1: gate or prose). §3 row 6 says the pre-commit scans "the staged
+diff": `no-secrets` scans the index AND the working tree, with no mode, so
+setup's pre-commit needs no change and `commit -a` is covered too.
 
 <!-- shared:rules@7867132c3871 -->
 ## Shared rules

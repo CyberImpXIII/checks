@@ -1,0 +1,3 @@
+{
+ "no-roster": {"exclude": ["gates.json"]}
+}
