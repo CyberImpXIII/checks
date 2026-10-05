@@ -18,7 +18,27 @@
   tests/test_todo_valid.py (each broken contract is an error). Swap to JSON if
   todo ever offers it (asked of todo, below).
 
+- This repo's `./dev.sh check --json` (checkslib/devjson.py, 2026-10-05) gives
+  one failure per failed step with file and line null: it conforms, but the
+  `code` view gets no file:line. Per-finding failures would mean parsing
+  unittest's and `checks run --json`'s output into rows; not done.
+
 ## Open decisions
+
+- `check-json` (built 2026-10-05) is `roles:audit`, not `all`, though the
+  brief asked for its results "under `checks all`": it runs the repo's whole
+  suite, so pre-commit it would run the suite inside itself (only checks and
+  hub call `checks run .` from dev.sh today; hub would pay twice per commit).
+  Run it with `checks all --roles audit` or `checks one check-json <repo>`.
+  Flipping to `all` is one word: the nesting guard (CHECKS_CHECK_JSON_ACTIVE)
+  already exists and is tested.
+- The schema (schema/check-json.schema.json) is this repo's concrete reading of
+  §4.4's prose: key names `checks`, `name`, `status`, `reason`, `counts.failed`,
+  `failures[].{message,file,line,role}`, and the eight `x-rules`. Not yet
+  confirmed by the planner. Changing it is a data edit plus its tests; the
+  validator refuses a JSON Schema keyword it does not enforce. §4.4's second
+  gate (each failure's role exists in its group) is not built: it needs the
+  roster, so it would take roles from the caller, the way `--names` works.
 
 - `tree-clean` was built 2026-10-04 as `roles:audit`: it runs only under
   `checks all --roles audit`, never pre-commit (where uncommitted work is what
@@ -48,6 +68,20 @@
   `checks all` still prints red cells only.
 
 ## Unconfirmed suspicions
+
+- check-json's run budget is 280s (under the runner's 300s). tools/todo's
+  `dev.sh check --json` took 240.1s on 2026-10-05, run alone; under `checks all`
+  (8 repos at once) it may pass 280s and come back `error`. Probe: `checks all
+  --roles audit` and read todo's check-json cell. If so, the budget becomes a
+  param (a repo's checks.json), not a bigger constant.
+- check-json decides "has --json" by the flag appearing anywhere in dev.sh. A
+  dev.sh that mentions `--json` only for another subcommand would be run and
+  fail `one-document` instead of being UNCHECKED. None does today (checked: the
+  five that mention it all take `check --json`).
+- tools/setup was not run by check-json (the brief: nothing that writes there).
+  unverified: its `check --json` prints `{"ok", "gates"}` (its help line says
+  so) and so fails `schema: $: missing checks` -- settle: `cd tools/setup &&
+  ./dev.sh check --json | head -c 300`.
 
 - `rules-in-sync` checks only the four rule sentences (decision 12 revised,
   2026-10-04), anywhere in the file: a sentence kept but contradicted by the
@@ -109,6 +143,14 @@ from the top, 14 locations, 12 red.
   `hooks userscope` proposal to the user settings (with Jacob's go-ahead), then
   stop copying the covered hooks and stop registering them in each repo's
   .claude/settings.json (else they run twice). Until then the copies stay.
+- 2026-10-05, via the dispatcher (check-json): hooks, hub and todo fail it,
+  each `schema: $: missing checks` (`checks one check-json tools/<x>`). todo
+  prints `{"ok", "gates": {gate: bool}}`, hub `{"ok", "gates": {gate: status},
+  "drift"}`: per-gate verdicts, no counts, failures, file:line or roles. The
+  nine repos without `--json` are UNCHECKED. setup: its dev.sh stub template
+  prints `{"ok": false, "error": ...}`, red under check-json by design (no
+  `checks`); a stub printing a schema-valid red document (one `error` check,
+  role code) would fail for the stated reason instead of on shape.
 - todo (2026-10-04, via the dispatcher): `todo check` has no `--json`
   (`./todo -C . check --json` -> "unrecognized arguments", exit 2), so
   todo-valid parses its text lines. A `--json` with the per-gate results and the

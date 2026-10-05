@@ -13,12 +13,14 @@ is written once here and never re-implemented in a repo.
 | run them everywhere | `./checks all [ROOT] --names <roster names>` -- a repo-by-check grid, then every red cell's findings |
 | what a check proves, how to pass it | `./checks explain <name>` |
 | what the source holds | `./checks list [--json]` (setup's check component should read the `--json`) |
+| the one shape of every repo's `dev.sh check --json` | `schema/check-json.schema.json` (read by `checkslib/checkjson.py`, which refuses a keyword it does not enforce); this repo prints it via `checkslib/devjson.py` |
 | what is open | `TODO.md` |
 
 **The checks.** Held equal to `./checks list` by `tests/test_meta.py`.
 
 | check | applies_to | proves |
 |---|---|---|
+| `check-json` | `roles:audit` | `./dev.sh check --json` prints the one schema (`schema/check-json.schema.json`, PLAN-agent-groups.md §4.4) and keeps its `x-rules` (exit 0 iff ok, ok iff nothing fail/error, counts match failures, ...); the shape, not a green suite; no dev.sh or no `--json` in it is UNCHECKED; audit-only because it runs the suite |
 | `docs-rows` | `repos:.` | the top CLAUDE.md tool table has a row per repo and a path per row |
 | `help-matches` | `all` | `dev.sh help` lists exactly the subcommands its `case` implements |
 | `hooks-installed` | `all` | each shared hook runs here: a repo copy that agrees with tools/hooks, or a missing/drifted copy covered by a user-scope registration (both read from `hooks copies --json`; `registered: null` is UNCHECKED); on ok it names `repo copy` vs `covered by user scope`; standalone: present, executable, parse |
