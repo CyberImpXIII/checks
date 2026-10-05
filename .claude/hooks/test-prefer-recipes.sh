@@ -52,7 +52,7 @@ else
 fi
 # The override marker is PRIVATE to this run. The live one is shared: parallel
 # runs raced over it (one wrote, another deleted, the first then failed), and
-# every run deleted any real override Jacob had opened.
+# every run deleted any real override the owner had opened.
 SS_BROWSER_OK="$(mktemp "${TMPDIR:-/tmp}/ss-browser-ok.XXXXXX")" && rm -f "$SS_BROWSER_OK"
 export SS_BROWSER_OK
 trap 'rm -f "$SS_BROWSER_OK"' EXIT
