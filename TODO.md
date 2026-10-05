@@ -37,13 +37,11 @@
 
 ## Unconfirmed suspicions
 
-- `rules-in-sync` (by meaning since 2026-10-04) does not catch a contradiction
-  written in the section's prose or in a repo's own extra bullet without a hedge
-  word (said in its docs). CORE (what each bullet keeps beyond its claim) is a
-  judgement: "Reading a mailbox is not permission", "mark it and hand it back"
-  and the `.env` sentence were ruled example or restatement. If Jacob reads any
-  of them as load-bearing, add it to CORE; addon-bench then goes red (it lacks
-  all three).
+- `rules-in-sync` checks only the four rule sentences (decision 12 revised,
+  2026-10-04), anywhere in the file: a sentence kept but contradicted by the
+  prose around it ("..., unless it is urgent") passes, by that decision. Its
+  first by-meaning version (commit 2815d3b: claim + core phrases, hedges,
+  flipped negations) is in history if a drift audit is ever wanted.
 - Re-routed items (2026-10-04), checked against `hooks-installed`:
   knowledge-base "no check-hooks.sh or DECLARED list": covered. `hooks copies`
   finds every location by walking, so no repo keeps a list; `checks all` runs
@@ -79,11 +77,12 @@ from the top, 14 locations, 12 red.
 - addon-bench: `.env` not git-ignored; constraints section reworded.
 - applications, knowledge-base, chronjobScheduler, data-bridge, scripts:
   constraints section differs from the top's (`./checks one rules-in-sync <repo>`).
-  Superseded 2026-10-04 by the by-meaning compare: addon-bench, applications,
-  knowledge-base and chronjobScheduler now pass it; still red, each lacking the
-  shared bullets (MISSING, the closest bullet named): emailTools (all four, and
-  no "Report a problem" section), data-bridge (all four), scripts (all four),
-  site-scrapers (no section). Relayed through the dispatcher.
+  Superseded 2026-10-04 by the rule-sentence check (decision 12 revised):
+  addon-bench, applications, knowledge-base and chronjobScheduler pass; still
+  red: emailTools (4 of 4 sentences missing, and no "Report a problem"
+  section), data-bridge (4), scripts (4), site-scrapers (3: it has "**Never**
+  attempt to bypass bot detection." at CLAUDE.md:394). Relayed through the
+  dispatcher.
 - hooks: `no-roster` fails on `.claude/lib` (its install destination) in
   audit-terms.json, vocab.json, source/lib/write-targets.sh, and on the literal
   `"site-scrapers"` (a package.json name) in two hooks and their tests. Fix in

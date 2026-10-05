@@ -23,8 +23,9 @@ Nothing here is required elsewhere.
 
 {CONSTRAINTS}"""
 
-# Its own preamble, its own examples, rewrapped, bold dropped from one claim,
-# curly quotes, and two bullets of its own around the shared ones: all pass.
+# The four rule sentences, with prose of this repo's own all around them: its
+# own preamble, its own explanations, rewrapped, one sentence unbolded, a curly
+# quote, and extra bullets of its own. All of that is ignored.
 GOOD = """# repo
 
 <!-- shared:rules@000000000000 -->
@@ -34,39 +35,27 @@ Wording here may differ.
 
 ## Constraints that don't bend
 
-These hold whatever the task (a preamble of this repo's own; it may say anything).
+These hold whatever the task (a preamble of this repo's own).
 
 - **Never write outside this repo without asking.** A rule of this repo's own.
 - **Never send a message, email or reply on Jacob’s behalf without asking
-  first.** Same for anything public or irreversible: making this repo public.
-- Never attempt to bypass bot detection. A detected wall is a result to
-  report -- not an obstacle to route around.
+  first.** Making this repo public counts.
+- Never attempt to bypass bot detection. A wall is reported, in this repo's words.
 - **Credential-shaped values are supplied at run time, never stored.** Not in a
-  fixture or a commit.
-- **Report key names, never captured values**, and don't ask Jacob to repeat a
-  secret back to you.
+  fixture.
+- **Report key names, never captured values.**
 - **Never commit real data.** Another of its own.
 <!-- /shared -->
 
 ## A section of the repo's own
 """
 
-# Five planted faults, one finding each: a required section gone, a claim
-# reworded (missing), a core phrase dropped, a hedge added, a negation flipped.
-BAD = """# repo
+# One rule sentence gone (bot detection, said only in other words), and one
+# required section gone.
+BAD = GOOD.replace("Never attempt to bypass bot detection.", "Do not try to get round bot checks.") \
+          .replace("## Keep an active TODO — write it when you notice it", "## Notes")
 
-## Constraints that don't bend
-
-- **Never send, reply to or draft a message on Jacob's behalf without asking first.**
-  Same for anything public or irreversible.
-- **Never attempt to bypass bot detection.** Route around it if you must.
-- **Credential-shaped values are supplied at run time, never stored**, unless the
-  run is local.
-- **Report key names, always captured values**, and don't ask Jacob to repeat a
-  secret back to you.
-"""
-
-PLANTED = 5
+PLANTED = 2
 
 
 def _ws(t, repo_md):
@@ -84,8 +73,5 @@ def failing(t):
     ws = _ws(t, BAD)
     return Fixture(ws / "r", workspace=ws,
                    expect=["no section 'Keep an active TODO'",
-                           "MISSING: no bullet says \"Never send a message, email or reply",
-                           "WEAKENED: the bullet \"Never attempt to bypass bot detection.\" drops",
-                           "WEAKENED: the bullet \"Credential-shaped values are supplied at run time, never stored.\" "
-                           "adds 'unless'",
-                           "CONTRADICTED: \"Report key names, never captured values\""])
+                           "rule sentence missing (from the top's 'Constraints that don't bend'): "
+                           "\"Never attempt to bypass bot detection.\""])

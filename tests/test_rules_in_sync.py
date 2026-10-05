@@ -1,8 +1,9 @@
-"""rules-in-sync's constraint matching, both ways: the fixture's good copy (own
-preamble, own extra bullets, own examples) passes; each fault planted alone in
-it fails with exactly one finding that names it; the failing fixture's planted
-faults are counted one for one; a top that no longer agrees with CORE fails as
-a broken reference; and the real workspace top agrees with CORE."""
+"""rules-in-sync's rule sentences, both ways: the fixture's good copy (own
+preamble, explanations and extra bullets) passes; each rule sentence removed
+or changed alone fails with exactly one finding naming it; the failing
+fixture's planted faults are counted one for one; prose around the sentences
+does not change the result while the top's sentences do (the gate-off probe:
+the input changes the output); and the real workspace top yields four."""
 import importlib.util
 import unittest
 
@@ -12,24 +13,18 @@ _spec = importlib.util.spec_from_file_location("fx_rules", TOOL_ROOT / "source" 
 fx = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(fx)
 
-# (what is planted, old text in fx.GOOD, new text, the one finding it must raise)
+SENTENCES = ["Never send a message, email or reply on Jacob's behalf without asking first.",
+             "Never attempt to bypass bot detection.",
+             "Credential-shaped values are supplied at run time, never stored.",
+             "Report key names, never captured values"]
+
+# (what is planted, old text in fx.GOOD, new text, the sentence then missing)
 PLANTS = [
-    ("claim reworded", "**Never send a message, email or reply on Jacob’s behalf",
-     "**Never send a message or reply on Jacob’s behalf", "MISSING: no bullet says \"Never send a message"),
-    ("claim deleted", "- Never attempt to bypass bot detection. A detected wall is a result to\n  report -- not an obstacle to route around.\n",
-     "", "MISSING: no bullet says \"Never attempt to bypass bot detection.\""),
-    ("core dropped", "Same for anything public or irreversible: making this repo public.",
-     "Making this repo public.", "drops \"Same for anything public or irreversible\""),
-    ("second core dropped", "and don't ask Jacob to repeat a\n  secret back to you.", "and that is all.",
-     "drops \"don't ask Jacob to repeat a secret back to you\""),
-    ("hedge added", "Not in a\n  fixture or a commit.", "Not in a fixture or a commit, except a local one.",
-     "adds 'except'"),
-    ("hedge in two words", "not an obstacle to route around.", "not an obstacle to route around, where possible.",
-     "adds 'where possible'"),
-    ("negation flipped", "**Never send a message, email", "**Always send a message, email",
-     "CONTRADICTED: \"Never send a message, email or reply"),
-    ("negation dropped", "supplied at run time, never stored.", "supplied at run time, stored.",
-     "CONTRADICTED: \"Credential-shaped values are supplied at run time, never stored.\""),
+    ("sentence deleted", "- Never attempt to bypass bot detection. A wall is reported, in this repo's words.\n", "",
+     SENTENCES[1]),
+    ("a word dropped", "Never send a message, email or reply", "Never send a message or reply", SENTENCES[0]),
+    ("negation flipped", "supplied at run time, never stored.", "supplied at run time, then stored.", SENTENCES[2]),
+    ("reworded", "**Report key names, never captured values.**", "**Name the key, not the value.**", SENTENCES[3]),
 ]
 
 
@@ -45,64 +40,61 @@ class RulesInSync(Case):
         self.assertEqual(res["status"], "ok", res["lines"])
 
     def test_each_planted_fault_fails_alone_with_one_finding(self):
-        for what, old, new, finding in PLANTS:
+        for what, old, new, sentence in PLANTS:
             with self.subTest(plant=what):
                 self.assertIn(old, fx.GOOD, "the plant no longer applies to the good copy")
                 res = self.run_on(fx.GOOD.replace(old, new, 1))
                 self.assertEqual(res["status"], "fail", res["lines"])
                 self.assertEqual(len(res["lines"]), 1, res["lines"])
-                self.assertIn(finding, res["lines"][0])
+                self.assertIn(f"rule sentence missing (from the top's 'Constraints that don't bend'): \"{sentence}\"",
+                              res["lines"][0])
 
     def test_failing_fixture_counts_its_planted_faults(self):
         res = self.run_on(fx.BAD)
         self.assertEqual(res["status"], "fail")
         self.assertEqual(len(res["lines"]), fx.PLANTED, res["lines"])
 
-    def test_section_absent_or_twice_fails(self):
-        start = fx.GOOD.index("## Constraints that don't bend")
-        end = fx.GOOD.index("<!-- /shared -->")
-        gone = fx.GOOD[:start] + fx.GOOD[end:]
-        res = self.run_on(gone)
-        self.assertEqual(res["status"], "fail")
-        self.assertEqual(res["lines"], ["CLAUDE.md: no section 'Constraints that don't bend'"])
-        twice = fx.GOOD + "\n" + fx.GOOD[start:end]
-        res = self.run_on(twice)
-        self.assertIn("appears 2 times", "\n".join(res["lines"]))
+    def test_prose_around_the_sentences_is_ignored(self):
+        noisy = fx.GOOD.replace("These hold whatever the task (a preamble of this repo's own).",
+                                "Anything at all, even: we usually send without asking.") \
+                       .replace("Not in a\n  fixture.", "Except, sometimes, in a fixture.")
+        res = self.run_on(noisy)
+        self.assertEqual(res["status"], "ok", res["lines"])
 
-    def test_section_without_bullets_misses_all_four(self):
-        res = self.run_on("# r\n\n## Keep an active TODO\n\n## Constraints that don't bend\n\nWe mean well.\n")
+    def test_the_tops_sentences_are_the_input(self):
+        # gate-off probe: the same copy goes red when the top's sentence changes,
+        # so the check reads the reference, not a list of its own.
+        top = fx.TOP.replace("**Never attempt to bypass bot detection.**", "**Never attempt to evade bot detection.**")
+        res = self.run_on(fx.GOOD, top)
+        self.assertEqual(res["status"], "fail")
+        self.assertIn("\"Never attempt to evade bot detection.\"", res["lines"][0])
+        top5 = fx.TOP + "- **Never delete a backup.** Ask first.\n"
+        res = self.run_on(fx.GOOD, top5)
+        self.assertEqual(res["lines"], ["CLAUDE.md: rule sentence missing (from the top's 'Constraints that don't "
+                                        "bend'): \"Never delete a backup.\""])
+
+    def test_section_absent_misses_all_four(self):
+        res = self.run_on("# r\n\n## Keep an active TODO\n\nWe mean well.\n")
         self.assertEqual(res["status"], "fail")
         self.assertEqual(len(res["lines"]), 4, res["lines"])
-        self.assertTrue(all("MISSING" in l for l in res["lines"]))
 
-    def test_top_that_drops_a_core_phrase_is_a_broken_reference(self):
-        top = fx.TOP.replace("Same for anything public or irreversible.", "")
-        res = self.run_on(fx.GOOD, top)
+    def test_broken_reference_fails(self):
+        res = self.run_on(fx.GOOD, fx.TOP.replace("## Constraints that don't bend", "## Constraints"))
         self.assertEqual(res["status"], "fail")
         self.assertIn("the reference is broken", res["lines"][0])
-        self.assertIn("Same for anything public or irreversible", res["lines"][0])
-
-    def test_top_that_drops_a_core_bullet_is_a_broken_reference(self):
-        line = next(l for l in fx.TOP.splitlines() if l.startswith("- **Never attempt"))
-        res = self.run_on(fx.GOOD, fx.TOP.replace(line + "\n", ""))
-        self.assertEqual(res["status"], "fail")
-        self.assertIn("no bullet starting \"Never attempt to bypass bot detection\"", res["lines"][0])
-
-    def test_a_new_top_bullet_is_required_without_a_core_entry(self):
-        top = fx.TOP + "- **Never delete a backup.** Ask first.\n"
-        res = self.run_on(fx.GOOD, top)
-        self.assertEqual(res["status"], "fail")
-        self.assertEqual(len(res["lines"]), 1, res["lines"])
-        self.assertIn("MISSING: no bullet says \"Never delete a backup.\"", res["lines"][0])
-        good = fx.GOOD.replace("<!-- /shared -->", "- Never delete a backup, ever.\n<!-- /shared -->")
-        self.assertEqual(self.run_on(good, top)["status"], "ok")
 
     @unittest.skipUnless(WORKSPACE and (WORKSPACE / "CLAUDE.md").is_file(),
                          "no workspace top beside this tool: the real reference went unchecked")
-    def test_real_top_agrees_with_core(self):
-        res = self.cli_json("one", "rules-in-sync", TOOL_ROOT, "--root", WORKSPACE)[1]["results"][0]
-        self.assertNotIn("the reference is broken", "\n".join(res["lines"]))
-        self.assertIn(res["status"], ("ok", "fail"), res["lines"])
+    def test_real_top_yields_the_four_sentences(self):
+        # Read through the check itself: a copy holding exactly the four sentences
+        # passes against the real top, and drops to one finding without one.
+        md = "# r\n\n" + "\n".join(f"- **{s}**" for s in SENTENCES) + "\n"
+        heads = [l for l in (WORKSPACE / "CLAUDE.md").read_text().splitlines() if l.startswith("## ")]
+        md += "\n".join(heads) + "\n"      # every top section heading, so only the sentences are tested
+        top = (WORKSPACE / "CLAUDE.md").read_text()
+        self.assertEqual(self.run_on(md, top)["status"], "ok")
+        res = self.run_on(md.replace(f"- **{SENTENCES[1]}**\n", ""), top)
+        self.assertEqual(len(res["lines"]), 1, res["lines"])
 
 
 if __name__ == "__main__":
