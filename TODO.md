@@ -74,6 +74,23 @@
   each non-SQLite store's mode (no write bit); live it is UNCHECKED everywhere
   so far (site-scrapers: all SQLite; tools/usage: the `~` bug above).
 
+- check-partial (done 2026-10-09, PLAN-small-tasks §3.7): the three
+  scenarios (killed, changed, hung) on a suite the check writes, handed to the
+  runner through CHECK_PARTS and PROGRESS_FILE. The contract (the manifest
+  shape, `passed_steps`, `--resume`) is defined HERE first, in the check's
+  header; no repo meets it yet, so it is UNCHECKED everywhere (seen: this
+  repo, scripts, tools/setup). tests/test_check_partial.py shows each of five
+  runner faults turning only its own scenario red. Not gated: that a repo's
+  REAL parts are declared with the right files (a part whose `files` omit
+  what it tests resumes wrongly); only the mechanism is proven. Cost: the
+  five tests take 80-110s (SETTLE and the 8s run limit); the full suite took
+  727s under load that day (297s before them, also under load).
+- `.claude/hooks/store-guard.sh` and its test are installed here (`setup
+  tools/checks --only hooks`, 2026-10-09) but NOT committed: tools/hooks has
+  the source mid-edit again, so hooks-installed says UNCHECKED for them.
+  Commit the copies (re-run the install first) once tools/hooks' source is
+  committed.
+
 ## Open decisions
 
 - The §14.8 contract shapes (2026-10-05): services.json, cli.json and
@@ -206,6 +223,17 @@
   finding, never a silent pass.
 
 ## Unconfirmed suspicions
+
+- Foreign output in this repo's check log (2026-10-09): `./dev.sh check >
+  <scratch>/check2.out` ended "check: FAILED: test" and was followed IN THE
+  SAME FILE by tools/setup's mutant summary ("mutants: 187 of 187 red, 5
+  problem(s)", "check: 3 of 6 gates FAILED"). Nothing in tests/, source/ or
+  checkslib/ runs setup's suite (grep). Suspect: an orphan from check-json's
+  timed-out setup run in `checks all` (killpg reaches the process group only;
+  a child in its own session survives and keeps an inherited fd), but the fd
+  path does not explain it. No such process was alive afterwards. Probe: run
+  `checks one check-json tools/setup` with a 5s CHECKS_CHECK_JSON_TIMEOUT,
+  then `ps` for setup's mutant runner.
 
 - check-json decides "has --json" by the flag appearing anywhere in dev.sh. A
   dev.sh that mentions `--json` only for another subcommand would be run and
@@ -363,6 +391,13 @@ from the top, 14 locations, 12 red.
   --only hooks --rebuild`. Since hooks b393ccd (store-guard.sh committed),
   every repo with copies also reads store-guard.sh `missing` until its owner
   runs `setup <repo> --only hooks`; this repo did (2026-10-09).
+- setup (2026-10-09): PLAN-small-tasks §6 says setup installs check-partial
+  with the other checks; its `gates` component's contract-gate list should
+  name `check-partial` (roles:audit, so `one check-partial <repo>`).
+- every repo owner (2026-10-09, PLAN-small-tasks §5): meet check-partial's
+  contract (its header) in `./dev.sh check`. harness's suite-steps.sh
+  fingerprints the whole tree, so it needs a per-part files hash for
+  `--resume` to run only the changed parts.
 - todo (2026-10-04, via the dispatcher): `todo check` has no `--json`
   (`./todo -C . check --json` -> "unrecognized arguments", exit 2), so
   todo-valid parses its text lines. A `--json` with the per-gate results and the
