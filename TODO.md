@@ -27,18 +27,35 @@
   `code` view gets no file:line. Per-finding failures would mean parsing
   unittest's and `checks run --json`'s output into rows; not done.
 
-- `./dev.sh check` is RED at HEAD and with the §14.8 gates alike (2026-10-05,
-  confirmed by stashing them): tools/hooks bd0413c added four hooks
-  (ask-first, git-stamp, settings-guard, write-ledger) and a shared
-  `.claude/lib/write-targets.sh`. (1) `checks run .` here: hooks-installed
-  says all nine are missing in this repo and not covered by user scope.
-  (2) tests/test_contract.py WithHooks (settings='registered') expects every
-  missing copy to be covered, but `.claude/lib/write-targets.sh` is a lib, and
-  user scope never covers one ("no shared hook of that name there"). Open:
-  should hooks-installed treat a lib copy as covered when every hook that uses
-  it is covered (a decision for hooks and setup), or should the test's
-  expectation drop the lib? The copies are setup's to install (decision 19).
-  Not fixed here.
+- `./dev.sh check` is RED, two causes, neither fixable here without a
+  decision (state 2026-10-08, after 63d72ab):
+  (1) tests/test_contract.py WithHooks (settings='registered'), a FIXTURE
+  test: `.claude/lib/ledger.sh` and `write-targets.sh` are "missing; not
+  covered by user scope (no shared hook of that name there)": user scope
+  never covers a lib. Open decision (hooks and setup): treat a lib copy as
+  covered when every hook that uses it is covered, or drop libs from the
+  test's expectation. The copies are setup's to install (decision 19).
+  (2) `checks run .` hooks-installed: on the second run the same day hooks
+  had committed prefer-recipes (978e6cb), so prefer-recipes.sh and its test
+  are REAL drift now (copies older than hooks HEAD: re-install with setup
+  --rebuild once tools/hooks is clean -- not done this session, since setup
+  would copy hooks' uncommitted no-inline-blobs edits too); no-inline-blobs.sh
+  and its test are FALSE drift (copies equal hooks HEAD, hooks has them ` M`;
+  see the next item).
+- hooks-installed judges drift against tools/hooks' WORKING TREE (hub's
+  report via the dispatcher, 2026-10-08). CONFIRMED read-only, no stash:
+  tools/hooks had ` M source/hooks/prefer-recipes.sh` and
+  `test-prefer-recipes.sh` (HEAD 43d2a1e); `cmp` of this repo's copies
+  against `git -C tools/hooks show HEAD:source/hooks/<f>`: same; against the
+  working-tree source: differ (line 126 / 159); hooks-installed reports both
+  as drift. So one mid-task edit in tools/hooks turns every repo's pre-commit
+  red. The comparison is made by `hooks copies --json` (tools/hooks' code);
+  this check only reads its `status`. Decision recorded (no change to the
+  check approved): the fix belongs in `hooks copies` -- compare against the
+  committed source (`git show HEAD:`), or mark a row whose source is
+  uncommitted (e.g. `source_dirty: true`) so hooks-installed can say
+  UNCHECKED ("source mid-edit") instead of a false drift. Reported to hooks
+  (below). Here, once hooks offers either, read it and add a fixture case.
 
 ## Open decisions
 
@@ -281,6 +298,13 @@ from the top, 14 locations, 12 red.
   the index plus the working tree (reword the row to say so); §3 row 1 has no
   rule section in any CLAUDE.md. hooks: §3 row 4's `git add -A` block is not
   in git-stamp.sh.
+- hooks (2026-10-08, via the dispatcher, from hub's report): `hooks copies
+  --json` compares installed copies against tools/hooks' working tree, so an
+  uncommitted edit in source/hooks/ marks every repo's copy `drift` and turns
+  each repo's pre-commit red (seen: prefer-recipes.sh, test-prefer-recipes.sh,
+  hooks HEAD 43d2a1e with both sources ` M`). Asked: compare against HEAD, or
+  flag the row `source_dirty` so hooks-installed can say UNCHECKED. Settle:
+  `cd tools/hooks && git status --short source/ && ./hooks copies ../.. --json`.
 - todo (2026-10-04, via the dispatcher): `todo check` has no `--json`
   (`./todo -C . check --json` -> "unrecognized arguments", exit 2), so
   todo-valid parses its text lines. A `--json` with the per-gate results and the
