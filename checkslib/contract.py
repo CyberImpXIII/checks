@@ -147,6 +147,23 @@ def _cli_unique(doc, repo):
     return _dupes([norm(s) for s in _stores(doc)], "$.store", "path") + _dupes(doc["verbs"], "$.verbs", "verb")
 
 
+def _cli_not_verbs(doc, repo):
+    """Without not_verbs, verbs may be a subset of the help. With it, the two
+    together claim to account for every command: held both ways."""
+    if "not_verbs" not in doc:
+        return []
+    out = [f"$.not_verbs: `{v}` is also in verbs" for v in doc["not_verbs"] if v in doc["verbs"]]
+    rel = doc["cli"]
+    if not inside(rel) or _executable(repo, rel):
+        return out
+    have, why = helptext.listed(Path(repo) / rel, repo)
+    if have is None:
+        return out + [f"$.not_verbs: `{rel} help` {why}: the commands cannot be accounted for"]
+    named = set(doc["verbs"]) | set(doc["not_verbs"])
+    out += [f"$.not_verbs: `{v}` is not a command `{rel} help` lists" for v in sorted(doc["not_verbs"]) if v not in have]
+    return out + [f"$.not_verbs: `{c}` (from `{rel} help`) is in neither verbs nor not_verbs" for c in sorted(have - named)]
+
+
 # --- node.json ----------------------------------------------------------------
 
 LISTS = ("generated", "record", "children")
@@ -196,7 +213,7 @@ RULES = {
     SERVICES: {"one-check": _one_check, "run-inside": _run_inside, "run-executable": _run_executable,
                "verb-implemented": _services_verbs, "unique": _services_unique, "write-declared": _write_declared},
     CLI: {"paths-inside": _cli_inside, "cli-executable": _cli_executable, "verb-implemented": _cli_verbs,
-          "unique": _cli_unique},
+          "unique": _cli_unique, "not-verbs-exact": _cli_not_verbs},
     NODE: {"paths-inside": _node_inside, "unique": _node_unique, "generated-exact": _generated_exact,
            "disjoint": _disjoint},
 }

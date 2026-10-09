@@ -59,10 +59,20 @@ class Schemas(unittest.TestCase):
                 yield from objects(sub, f"{where}.{k}")
             if isinstance(node.get("items"), dict):
                 yield from objects(node["items"], f"{where}[]")
+        # A map (name -> value) has open keys by nature; each one names the
+        # x-rule that holds its keys, so no map is left unchecked.
+        maps = {"cli.json.not_verbs": (contract.CLI, "not-verbs-exact")}
+        seen = set()
         for name in contract.SCHEMAS:
             for where, node in objects(contract.schema(name), name):
                 with self.subTest(where):
-                    self.assertIs(node.get("additionalProperties"), False)
+                    if where in maps:
+                        seen.add(where)
+                        self.assertIsInstance(node.get("additionalProperties"), dict)
+                        self.assertIn(maps[where][1], contract.RULES[maps[where][0]])
+                    else:
+                        self.assertIs(node.get("additionalProperties"), False)
+        self.assertEqual(seen, set(maps))
 
     def test_additional_properties_false_is_enforced(self):
         s = {"type": "object", "additionalProperties": False, "properties": {"a": {"type": "string"}}}
@@ -83,6 +93,8 @@ class Schemas(unittest.TestCase):
 SERVICES = {"name": "r", "tags": ["t"], "services": [{"service": "check", "run": "dev.sh", "verbs": ["check"]},
                                                      {"service": "write", "run": "store.sh", "verbs": ["add"]}]}
 CLIDOC = {"store": "app.db", "cli": "store.sh", "verbs": ["add", "list"]}
+# The harness's shape (.claude/cli.json): every other command named, with why.
+CLIDOC_ALL = dict(CLIDOC, _comment="prose", not_verbs={"drop": "the store's owner only"})
 NODEDOC = {"rebuild": ["true"], "generated": ["out.txt"], "record": ["*.md"], "children": ["kid"], "registry": "reg.json"}
 VERIFYDOC = {"items": [{"item": "a", "status": "same"}, {"item": "b", "status": "differs", "detail": "line 2"}]}
 
@@ -103,6 +115,7 @@ RULE_MUTANTS = [
     (contract.CLI, "cli-executable", lambda d: d.update(cli="plain.txt"), "`plain.txt` is not executable"),
     (contract.CLI, "verb-implemented", lambda d: d["verbs"].append("purge"), "does not implement `purge`"),
     (contract.CLI, "unique", lambda d: d.update(store=["app.db", "./app.db"]), "path `app.db` given twice"),
+    (contract.CLI, "not-verbs-exact", lambda d: d["not_verbs"].pop("drop"), "`drop` (from `store.sh help`) is in neither"),
     (contract.NODE, "paths-inside", lambda d: d["generated"].append("../x"), "`../x` is not a path inside"),
     (contract.NODE, "unique", lambda d: d["record"].append("*.md"), "path `*.md` given twice"),
     (contract.NODE, "generated-exact", lambda d: d["generated"].append("gen/*.txt"), "`gen/*.txt` is a glob"),
@@ -118,7 +131,7 @@ class Rules(Case):
         cli(self.r / "dev.sh", "check")
         cli(self.r / "store.sh", "add", "list", "drop")
         write(self.r / "plain.txt", "x\n")
-        self.clean = {contract.SERVICES: SERVICES, contract.CLI: CLIDOC, contract.NODE: NODEDOC, contract.VERIFY: VERIFYDOC}
+        self.clean = {contract.SERVICES: SERVICES, contract.CLI: CLIDOC_ALL, contract.NODE: NODEDOC, contract.VERIFY: VERIFYDOC}
         for name, doc in self.clean.items():
             write(self.r / name, json.dumps(doc))
 
@@ -146,6 +159,31 @@ class Rules(Case):
                     _, found = self.read(name, doc)
                 self.assertFalse([f for f in found if want in f], found)
                 write(self.r / name, json.dumps(self.clean[name]))
+
+    def test_not_verbs_each_way_it_can_be_wrong(self):
+        name = contract.CLI
+        cases = {
+            "ghost": (dict(CLIDOC_ALL, not_verbs={"drop": "x", "purge": "x"}), "`purge` is not a command `store.sh help` lists"),
+            "overlap": (dict(CLIDOC_ALL, not_verbs={"drop": "x", "add": "x"}), "`add` is also in verbs"),
+        }
+        for label, (doc, want) in cases.items():
+            with self.subTest(label):
+                _, found = self.read(name, doc)
+                self.assertEqual([f for f in found if f.startswith(f"{name}: not-verbs-exact: ")],
+                                 [f"{name}: not-verbs-exact: $.not_verbs: {want}"], found)
+        # without not_verbs, verbs may be a subset of the help: `drop` unnamed is fine
+        self.assertEqual(self.read(name, CLIDOC), (CLIDOC, []))
+
+    def test_not_verbs_shape_is_held_by_the_schema(self):
+        # the counterfactual: the keys added for .claude/cli.json do not open the
+        # schema; a misspelt key and a reason that is not a string stay red
+        for doc, want in ((dict(CLIDOC_ALL, not_verbz={}), "unknown key `not_verbz`"),
+                          (dict(CLIDOC_ALL, not_verbs={"drop": ""}), "$.not_verbs.drop: shorter than 1"),
+                          (dict(CLIDOC_ALL, not_verbs=["drop"]), "$.not_verbs: [\"drop\"] is not object")):
+            with self.subTest(want):
+                got, found = self.read(contract.CLI, doc)
+                self.assertIsNone(got)
+                self.assertIn(want, "\n".join(found))
 
     def test_absent_broken_and_misshapen(self):
         (self.r / contract.CLI).unlink()

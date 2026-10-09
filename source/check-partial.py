@@ -16,7 +16,7 @@
 #       `run` runs in the file's folder, `files` are relative to it.
 #   PROGRESS_FILE=<file>  the progress file (the shared progress.sh's
 #       variable), rewritten as each part ends, with `passed_steps`: the names
-#       of the parts that passed (the shared suite-steps.sh's field).
+#       of the parts that passed (the field the shared suite-parts.sh adds).
 #   `./dev.sh check --json`  one `checks[]` entry per part, named by the part,
 #       `ok` iff its run exits 0 within its timeout_s.
 #   `./dev.sh check --json --resume`  runs only the parts whose files changed

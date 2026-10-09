@@ -85,8 +85,8 @@
   scenarios (killed, changed, hung) on a suite the check writes, handed to the
   runner through CHECK_PARTS and PROGRESS_FILE. The contract (the manifest
   shape, `passed_steps`, `--resume`) is defined HERE first, in the check's
-  header; no repo meets it yet, so it is UNCHECKED everywhere (seen: this
-  repo, scripts, tools/setup). tests/test_check_partial.py shows each of five
+  header. The harness (`.claude`) meets it (OK, 2026-10-09); other repos say
+  UNCHECKED (seen: this repo, scripts, tools/setup). tests/test_check_partial.py shows each of five
   runner faults turning only its own scenario red. Not gated: that a repo's
   REAL parts are declared with the right files (a part whose `files` omit
   what it tests resumes wrongly); only the mechanism is proven. Cost: the
@@ -405,12 +405,14 @@ from the top, 14 locations, 12 red.
   `uses=lib/ledger.sh` per hook, or a `user_scope` row per lib whose
   `registered` is true iff every hook using it is. Here: nothing changed;
   the test stays red until hooks answers.
-- harness (2026-10-09, via the dispatcher): the top's `.claude/cli.json`
-  (store agents.manifest.json) is not read by accessor, which reads a repo's
-  root `cli.json` only, and it has a `not_verbs` key that
-  schema/cli.schema.json (additionalProperties false) would refuse. Expected:
-  move it to the root as `cli.json` without `not_verbs`, or ask here for the
-  key and for `.claude/cli.json` as a second location.
+- harness (2026-10-09): `.claude` is its own git repo, and its root
+  cli.json is read. schema/cli.schema.json now takes `not_verbs` (verb ->
+  why) and `_comment`. A new rule, not-verbs-exact, holds verbs +
+  not_verbs == the CLI's help, both ways; the real file passes it. Still red
+  there, and theirs: accessor gives 133 findings "names the store
+  `agents.manifest.json` around its CLI `agents.sh`" (hooks/*.sh and
+  others). Theirs: route the reads through agents.sh, or list the readers in
+  checks.json's accessor `impl` param with why.
 - site-scrapers (2026-10-09): accessor in its own row fails on
   `data/failures.db: a store cli.json does not name`. Theirs: name it in
   cli.json's `store`, or say why it is not a store.
@@ -440,9 +442,9 @@ from the top, 14 locations, 12 red.
   with the other checks; its `gates` component's contract-gate list should
   name `check-partial` (roles:audit, so `one check-partial <repo>`).
 - every repo owner (2026-10-09, PLAN-small-tasks §5): meet check-partial's
-  contract (its header) in `./dev.sh check`. harness's suite-steps.sh
-  fingerprints the whole tree, so it needs a per-part files hash for
-  `--resume` to run only the changed parts.
+  contract (its header) in `./dev.sh check`. The harness meets it (its
+  suite-parts.sh; `checks one check-partial .claude` OK in 19s, 2026-10-09),
+  and other repos can copy that runner.
 - todo (2026-10-04, via the dispatcher): `todo check` has no `--json`
   (`./todo -C . check --json` -> "unrecognized arguments", exit 2), so
   todo-valid parses its text lines. A `--json` with the per-gate results and the

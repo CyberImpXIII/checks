@@ -9,12 +9,15 @@
  "properties": {
   "store": {"type": ["string", "array"], "minLength": 1, "minItems": 1, "items": {"type": "string", "minLength": 1}, "description": "The store: one path, or a list of paths or globs, relative to the repo root. Its file may be git-ignored (a database usually is)."},
   "cli": {"type": "string", "minLength": 1, "description": "The executable that is the only way into the store, relative to the repo root."},
-  "verbs": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "The verbs the CLI offers; each must be one `<cli> help` lists. Empty in setup's skeleton."}
+  "verbs": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "The verbs the CLI offers; each must be one `<cli> help` lists. Empty in setup's skeleton."},
+  "not_verbs": {"type": "object", "additionalProperties": {"type": "string", "minLength": 1}, "description": "Optional: every other command `<cli> help` lists, each with why a caller may not run it. When present, verbs and not_verbs together are exactly the help's commands (the harness's .claude/cli.json uses it)."},
+  "_comment": {"type": "string", "description": "Optional prose for the reader; no check reads it."}
  },
  "x-rules": {
   "paths-inside": "`cli` and every store path are relative paths inside the repo: not absolute, no `..` segment",
   "cli-executable": "`cli` exists and is executable",
   "verb-implemented": "every verb is a command `<cli> help` lists (checkslib/helptext.py reads the help)",
-  "unique": "no store path twice, no verb twice"
+  "unique": "no store path twice, no verb twice",
+  "not-verbs-exact": "with not_verbs: no command is in both verbs and not_verbs, and verbs + not_verbs are exactly the commands `<cli> help` lists, both ways"
  }
 }
