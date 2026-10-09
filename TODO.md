@@ -60,6 +60,13 @@
   it says nothing about the shape. Fix not chosen: run check-json one repo at a
   time (a per-check `serial` flag in the runner), or make the budget a param.
   A bigger constant alone would only move the wall.
+  W17 (2), alone-vs-load, INCOMPLETE (2026-10-09): the sequential sweep
+  (scratchpad time-check-json.sh, one repo at a time, nothing else of ours)
+  finished 1 of 18 before the dispatcher called time: addon-bench still hit
+  280s ALONE, but with foreign load avg 41->34 and 23->16 other `dev.sh
+  check` processes alive. So "alone" was not achievable on this machine that
+  day. Next: re-run when the machine is quiet, with CHECKS_CHECK_JSON_TIMEOUT
+  set high (e.g. 1500), so a time over 280 is measured, not capped.
 - `contract.inside()` takes a `~/...` store path as repo-relative (found
   2026-10-09): tools/usage's cli.json stores live under `~/`, so paths-inside
   does not flag them, accessor reads tools/usage as OK, and stores-readonly
@@ -280,6 +287,17 @@
 
 
 ## Reported to other owners
+
+- hooks (2026-10-09, W17 run): `hooks copies` and `hooks userscope` refuse the
+  whole source ("FAIL lib/extra-stores.sh: no test ... source is not
+  well-formed") while `source/lib/extra-stores.sh` sits untracked in
+  tools/hooks (last commit a953a98). Every repo's hooks-installed then FAILs
+  ("printed no report"), and here 4 WithHooks tests go red (3 JSONDecodeError
+  + the userscope one). Expected: a mid-edit lib file not to fail every
+  repo's gate. Probably transient. Open decision on this side: should
+  hooks-installed say UNCHECKED, not FAIL, when `hooks copies` refuses over
+  an uncommitted source file? It FAILs today, and that is honest but noisy.
+  Settle: `tools/hooks/hooks copies --json` after its owner commits.
 
 All 2026-10-04, through the deep-work report that built this repo (the
 dispatcher relays). Evidence: `tools/checks/checks all --names <roster names>`
