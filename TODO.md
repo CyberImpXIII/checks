@@ -85,6 +85,16 @@
   what it tests resumes wrongly); only the mechanism is proven. Cost: the
   five tests take 80-110s (SETTLE and the 8s run limit); the full suite took
   727s under load that day (297s before them, also under load).
+- W17 caveat (PLAN-architecture-review §4), answered 2026-10-09: `checks
+  all` did NOT hide UNCHECKED. Its grid prints each one as `unch` (never `ok`,
+  never dropped), and `--json` keeps `status: unchecked`. Proof:
+  tests/test_runner.py `test_the_grid_shows_every_unchecked_cell_and_never_as_ok`
+  builds a 2-repo x 3-check grid (ok/FAIL/unch); the cell rows passed before
+  any change. The real gap was that the text never says the word UNCHECKED
+  (so a grep counted 0), and the red-repo detail lists only red cells. The
+  closing line now counts them: "N UNCHECKED cell(s) (never ok; ...)". Without
+  that change, the test fails on the count. Still open: unchecked REASONS are
+  not printed in the grid view (`checks one <check> <repo>` gives them).
 - `.claude/hooks/store-guard.sh` and its test are installed here (`setup
   tools/checks --only hooks`, 2026-10-09) but NOT committed: tools/hooks has
   the source mid-edit again, so hooks-installed says UNCHECKED for them.

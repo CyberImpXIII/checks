@@ -146,7 +146,9 @@ def cmd_all(a):
     for repo in red:
         print()
         _print_repo({**repo, "results": [r for r in repo["results"] if r["status"] in runner.RED]})
-    print(f"\nchecks all {rep['root']}: {len(rep['repos'])} location(s), {len(red)} red")
+    unch = sum(r["status"] == "unchecked" for repo in rep["repos"] for r in repo["results"])
+    print(f"\nchecks all {rep['root']}: {len(rep['repos'])} location(s), {len(red)} red, "
+          f"{unch} UNCHECKED cell(s) (never ok; `checks one <check> <repo>` says why)")
     return 0 if rep["ok"] else 1
 
 

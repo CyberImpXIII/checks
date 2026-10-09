@@ -152,6 +152,27 @@ class All(Case):
         self.assertEqual(got, {".": True, "good": True, "bad": False, "nested/bad2": False})
         self.assertFalse(rep["ok"])
 
+    def test_the_grid_shows_every_unchecked_cell_and_never_as_ok(self):
+        # PLAN-architecture-review.md §4 W17's caveat: a grid with an ok, a
+        # FAIL and an UNCHECKED check over two repos prints each cell as it is,
+        # and the closing line counts the UNCHECKED cells (none is ok).
+        self.add_check("aok", "exit 0")
+        self.add_check("bfail", 'echo "red"; exit 2')
+        self.add_check("cunch", 'echo "cannot here"; exit 3')
+        ws = self.tmp / "ws"
+        repo(ws)
+        repo(ws / "kid")
+        p = run_cli("all", ws, "--source", self.src)
+        rows = {line.split()[0]: line.split()[1:4] for line in p.stdout.splitlines()
+                if line.startswith("  ") and line.split()[0] in (".", "kid")}
+        self.assertEqual(rows, {".": ["ok", "FAIL", "unch"], "kid": ["ok", "FAIL", "unch"]}, p.stdout)
+        self.assertIn("unch = could not run here", p.stdout)
+        self.assertIn(": 2 location(s), 2 red, 2 UNCHECKED cell(s) (never ok", p.stdout.splitlines()[-1])
+        doc = json.loads(run_cli("all", ws, "--source", self.src, "--json").stdout)
+        got = {(rp["rel"], r["check"]): r["status"] for rp in doc["repos"] for r in rp["results"]}
+        self.assertEqual(got[(".", "cunch")], "unchecked")
+        self.assertEqual(got[("kid", "cunch")], "unchecked")
+
     def test_a_repo_whose_process_prints_no_report_is_a_fault(self):
         with mock.patch.object(runner, "CLI", self.tmp / "no-such-cli"):
             rep = runner._run_repo_process(self.tmp, self.tmp, self.src, None, ())
