@@ -110,6 +110,23 @@
 
 ## Open decisions
 
+- todo td-25 (relayed 2026-10-09; context-hygiene hit the same wall): the
+  services.schema.json enum allows only `check` and `write`, so read verbs
+  (todo get/find/refs) cannot be declared. Recommendation: add a `read`
+  service. Its verbs are checked against help, the same way write verbs are,
+  but they are NOT required to be within cli.json's write verbs. It extends
+  PLAN-routing-tree §14.8's list of services, so the hub/Planner confirm
+  before the schema changes. The schema, contract.py and services-valid
+  fixtures would change together.
+- todo td-29 (relayed 2026-10-09): stores-exported FAILs a store with no
+  `verify` verb, which assumes every declared store is exported to
+  DATA_REPO. todo's stores have no export, and no plan for one.
+  Recommendation: the CHECK changes, not todo. cli.json gets an explicit
+  opt-out (e.g. `"export": null` plus a `why`), and the check then says
+  UNCHECKED ("declares no export: <why>"), never ok. With no field at all,
+  it stays a finding, so silence is never a pass. Whether todo stores
+  SHOULD be exported is the top level's call (see todo's td-29).
+
 - The §14.8 contract shapes (2026-10-05): services.json, cli.json and
   node.json are defined HERE first, as schema/{services,cli,node}.schema.json.
   This is this repo's reading of PLAN-routing-tree.md §14.8 and
