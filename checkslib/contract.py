@@ -72,6 +72,14 @@ def _stores(doc):
     return [s] if isinstance(s, str) else list(s)
 
 
+def store_files(doc, files):
+    """The files (repo-relative, from `files`) a valid cli.json's `store` names,
+    by path or glob, whatever their extension: the one reading of `store` for
+    every check (accessor, stores-readonly)."""
+    globs = [norm(s) for s in _stores(doc)]
+    return sorted({p for p in files if any(fnmatch.fnmatch(p, g) for g in globs)})
+
+
 # --- services.json ----------------------------------------------------------
 
 def _one_check(doc, repo):

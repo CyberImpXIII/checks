@@ -3,7 +3,8 @@
 scope rule and the binary/size rule are written once.
 
 Scope: the files git would commit (ctx.tracked(); every file under the repo
-outside git, .git, node_modules and __pycache__ pruned), minus the globs given.
+outside git, .git, node_modules, __pycache__ and nested git repos pruned),
+minus the globs given.
 DEFAULT_EXCLUDE is the shared baseline: docs (*.md), the installed hook copies
 (.claude/), and tests (a test plants faults on purpose)."""
 import fnmatch
@@ -16,12 +17,15 @@ MAX_BYTES = 2_000_000
 
 
 def walk(root, prune=PRUNE, dot=True):
-    """Every file under root (relative, posix), pruning `prune` and, unless
-    dot is true, every dot-folder."""
+    """Every file under root (relative, posix), pruning `prune`, every nested
+    git repo (a folder below root holding `.git`: its own repo, judged in its
+    own row, as git itself leaves it out of root's files) and, unless dot is
+    true, every dot-folder."""
     root = Path(root)
     out = []
     for d, dirs, names in os.walk(root):
-        dirs[:] = [x for x in dirs if x not in prune and (dot or not x.startswith("."))]
+        dirs[:] = [x for x in dirs if x not in prune and (dot or not x.startswith("."))
+                   and not os.path.lexists(os.path.join(d, x, ".git"))]
         out += [Path(d, n).relative_to(root).as_posix() for n in names]
     return sorted(out)
 

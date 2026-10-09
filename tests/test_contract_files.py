@@ -4,6 +4,7 @@ nothing undeclared), each rule shown red alone, and the three checks that read
 them: services-valid, accessor, registry-matches. Every check is run through
 the CLI (`checks one`), the way a repo runs it."""
 import copy
+import os
 import json
 import unittest
 from pathlib import Path
@@ -270,11 +271,87 @@ class Accessor(Case):
         res = self.one(r)
         self.assertEqual(res["status"], "unchecked")
 
+    def test_a_json_store_counts_once_cli_json_declares_it(self):
+        """PLAN-services.md §3 rule 1: no `stores` param, the declaration is enough."""
+        r = repo(self.tmp / "r", {"todo.json": "{}\n", "report.sh": "jq . todo.json\n"})
+        cli(r / "store.sh", "add", "list")
+        self.assertEqual(self.one(r)["status"], "ok", "an undeclared *.json is not a store")
+        write(r / "cli.json", json.dumps(dict(CLIDOC, store="todo.json")))
+        res = self.one(r)
+        self.assertEqual((res["status"], res["lines"]),
+                         ("fail", ["report.sh:1: names the store `todo.json` around its CLI `store.sh`"]))
+
+    def test_a_nested_repo_is_judged_in_its_own_row_not_the_parent(self):
+        """The top's four 2026-10-09 findings were stores inside nested repos."""
+        top = self.tmp / "top"
+        write(top / "CLAUDE.md", "# top\n")                   # not a git repo, as the workspace top
+        repo(top / "kid")
+        write(top / "kid" / "data" / "k.db", "")
+        self.assertEqual(self.one(top)["status"], "ok")
+        self.assertEqual(self.one(top / "kid")["status"], "fail", "the kid still answers for its store")
+        write(top / "plain" / "data" / "p.db", "")              # the counterfactual: not a repo, so the top's
+        res = self.one(top)
+        self.assertEqual(res["lines"], ["plain/data/p.db: a store with no cli.json naming its one CLI"])
+
     def test_a_broken_cli_json_is_red(self):
         r = self.store(cli_doc=dict(CLIDOC, verbs=["add", "purge"]))
         res = self.one(r)
         self.assertEqual(res["status"], "fail")
         self.assertIn("cli.json: verb-implemented: $.verbs: `store.sh` does not implement `purge`", res["lines"][0])
+
+
+class StoresReadonly(Case):
+    """PLAN-services.md §3 rule 2/5: a store its CLI writes whole sits at 0444;
+    SQLite is not judged by mode. Each case changes one input."""
+
+    def one(self, r):
+        return self.cli_json("one", "stores-readonly", r)[1]["results"][0]
+
+    def store(self, stores, files):
+        r = repo(self.tmp / "r")
+        cli(r / "store.sh", "add", "list")
+        write(r / "cli.json", json.dumps(dict(CLIDOC, store=stores)))
+        for rel, mode in files.items():
+            write(r / rel, "x\n", mode)
+        return r
+
+    def test_mode_turns_the_result(self):
+        r = self.store("todo.json", {"todo.json": 0o444})
+        res = self.one(r)
+        self.assertEqual((res["status"], res["lines"]), ("ok", ["read-only: todo.json"]))
+        for mode in (0o644, 0o464, 0o446):                      # owner, group, other write bit: each red
+            os.chmod(r / "todo.json", mode)
+            with self.subTest(mode=oct(mode)):
+                res = self.one(r)
+                self.assertEqual((res["status"], res["lines"]),
+                                 ("fail", [f"todo.json: writable (mode {mode:04o}); a store its CLI writes whole sits at 0444"]))
+
+    def test_every_matched_file_of_a_glob_is_judged(self):
+        res = self.one(self.store(["state/*"], {"state/a.json": 0o444, "state/b.tsv": 0o600}))
+        self.assertEqual(res["lines"], ["state/b.tsv: writable (mode 0600); a store its CLI writes whole sits at 0444"])
+
+    def test_sqlite_and_its_side_files_are_not_judged(self):
+        res = self.one(self.store(["app.db", "app.db-wal", "x.sqlite3-journal"],
+                                  {"app.db": 0o644, "app.db-wal": 0o644, "x.sqlite3-journal": 0o644}))
+        self.assertEqual(res["status"], "unchecked", res["lines"])
+        self.assertIn("every store is SQLite", res["lines"][0])
+        res = self.one(self.store(["app.db", "t.json"], {"app.db": 0o644, "t.json": 0o444}))
+        self.assertEqual((res["status"], res["lines"]), ("ok", ["read-only: t.json"]))
+
+    def test_nothing_to_judge_is_unchecked_never_ok(self):
+        self.assertEqual(self.one(repo(self.tmp / "none"))["status"], "unchecked")
+        res = self.one(self.store("missing.json", {}))
+        self.assertEqual(res["status"], "unchecked")
+        self.assertIn("matches no file", res["lines"][0])
+
+    def test_a_broken_cli_json_is_unchecked_and_left_to_accessor(self):
+        r = self.store("todo.json", {"todo.json": 0o644})
+        write(r / "cli.json", json.dumps(dict(CLIDOC, store="todo.json", verbs=["purge"])))
+        res = self.one(r)
+        self.assertEqual(res["status"], "unchecked", res["lines"])
+        self.assertIn("`accessor` says which", res["lines"][0])
+        write(r / "cli.json", "{not json")
+        self.assertEqual(self.one(r)["status"], "unchecked")
 
 
 class RegistryMatches(Case):

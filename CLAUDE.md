@@ -23,7 +23,7 @@ is written once here and never re-implemented in a repo.
 
 | check | applies_to | proves |
 |---|---|---|
-| `accessor` | `all` | a store (`*.db`, `*.sqlite*`, the `stores` param) has a cli.json naming it and its one CLI, cli.json is valid, and no file outside the CLI (and the `impl` param) names the store's file; no store and no cli.json is ok |
+| `accessor` | `all` | a store (`*.db`, `*.sqlite*`, the `stores` param) has a cli.json naming it and its one CLI, cli.json is valid, and no file outside the CLI (and the `impl` param) names the store's file -- any file cli.json names counts, a JSON store included; a nested git repo's files are its own row's; no store and no cli.json is ok |
 | `check-json` | `roles:audit` | `./dev.sh check --json` prints the one schema (`schema/check-json.schema.json`, PLAN-agent-groups.md §4.4) and keeps its `x-rules` (exit 0 iff ok, ok iff nothing fail/error, counts match failures, ...); the shape, not a green suite; no dev.sh or no `--json` in it is UNCHECKED; audit-only because it runs the suite |
 | `docs-rows` | `repos:.` | the top CLAUDE.md tool table has a row per repo and a path per row |
 | `help-matches` | `all` | `dev.sh help` lists exactly the subcommands its `case` implements |
@@ -39,6 +39,7 @@ is written once here and never re-implemented in a repo.
 | `settings-tracked` | `all` | `.claude/settings.json`, when present, is tracked by git (`ls-files`; staged counts) and matched by no ignore rule (`check-ignore --no-index`), so its hook wiring travels with a clone (PLAN-repo-setup.md §7.9); no file is ok; outside git UNCHECKED |
 | `tree-clean` | `roles:audit` | no uncommitted work in the tree; only under `checks all --roles audit`, never pre-commit |
 | `stores-exported` | `all` | the store's own `<cli> verify --json` (the CLI cli.json names) reports every exported item `same` against the data repo (`DATA_REPO`, from the caller's environment; unset is UNCHECKED); `differs`/`missing` are findings; the report must fit `schema/verify.schema.json`; no cli.json is UNCHECKED |
+| `stores-readonly` | `all` | every store cli.json names that its CLI writes whole (not SQLite, which stays writable for its WAL) has no write bit (0444); mode is a signal, not the seal (`sed -i`/`mv` replace a 0444 file); no cli.json, no matched file, or only SQLite stores is UNCHECKED, never ok |
 | `todo-valid` | `all` | TODO.md exists and has a heading; with a todo.json, `tools/todo/todo check` passes (its FAIL lines are the findings) |
 
 **The contract.** A check is `source/<name>.py`, executable, with a

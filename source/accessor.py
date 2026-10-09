@@ -4,16 +4,20 @@
 # §14.8; PLAN-one-source.md §2.4), in three parts:
 #   1. a store needs a cli.json: a store-shaped file on disk (*.db, *.sqlite,
 #      *.sqlite3, plus the `stores` param's globs; git-ignored ones count,
-#      dot-folders, tests/ and test/ do not) in a repo with no cli.json is a
-#      finding, and so is one cli.json's `store` does not name (one gated CLI
-#      per store);
+#      dot-folders, tests/ and test/ do not, nor anything inside a nested git
+#      repo: that repo is judged in its own row) in a repo with no cli.json is
+#      a finding, and so is one cli.json's `store` does not name (one gated
+#      CLI per store);
 #   2. cli.json fits schema/cli.schema.json and its x-rules: paths inside the
 #      repo, the CLI exists and is executable, every verb is one `<cli> help`
 #      lists, nothing twice;
 #   3. nothing reads the store around its CLI: no file in scope names the
 #      store's file (its basename, as a token) outside the CLI itself and the
-#      `impl` param's globs (the CLI's own modules). Scope: the files git would
-#      commit, minus *.md, .claude/, tests/, test/, the contract files and
+#      `impl` param's globs (the CLI's own modules). Every file cli.json's
+#      `store` names counts, whatever its extension: a JSON store (todo.json)
+#      is gated once cli.json declares it, with no `stores` param needed. Scope:
+#      the files git would commit (outside git: every file, nested git repos
+#      pruned), minus *.md, .claude/, tests/, test/, the contract files and
 #      checks.json, and the `exclude` param's globs.
 # No store and no cli.json is ok: nothing to gate. A cli.json whose store
 # globs match no file has nothing to look for, so part 3 is UNCHECKED.
@@ -49,7 +53,7 @@ def main():
             api.done(found)
         api.done([f"{p}: a store with no {contract.CLI} naming its one CLI" for p in on_disk])
     stores = [contract.norm(s) for s in ([doc["store"]] if isinstance(doc["store"], str) else doc["store"])]
-    declared = sorted({p for p in files if any(scan.matches(p, [s]) for s in stores)})
+    declared = contract.store_files(doc, files)
     findings = list(found)
     findings += [f"{p}: a store {contract.CLI} does not name (one gated CLI per store)"
                  for p in on_disk if p not in declared]

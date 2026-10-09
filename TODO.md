@@ -51,6 +51,29 @@
   Note: test_contract's real-tool tests read tools/hooks' live working tree,
   so they now split their expected lines by each row's flag.
 
+- check-json's 280s budget is a LOAD test under `checks all` (CONFIRMED
+  2026-10-09): `checks all --roles audit --json` took 686s; 14 of 18
+  check-json cells were `error` "did not finish in 280.0s" (tools/todo,
+  tools/setup and this repo among them), 4 ok (scripts 62s, chronjobScheduler
+  85s, data-bridge 135s, emailTools 189s). run_all runs 8 repos at once, and
+  other agents' suites were running beside it. `error` is the honest cell, but
+  it says nothing about the shape. Fix not chosen: run check-json one repo at a
+  time (a per-check `serial` flag in the runner), or make the budget a param.
+  A bigger constant alone would only move the wall.
+- `contract.inside()` takes a `~/...` store path as repo-relative (found
+  2026-10-09): tools/usage's cli.json stores live under `~/`, so paths-inside
+  does not flag them, accessor reads tools/usage as OK, and stores-readonly
+  says UNCHECKED ("matches no file"). Decide: a `~` path is outside (a
+  finding), or cli.json gets a field for stores kept outside the repo.
+- accessor and stores-readonly (done 2026-10-09, PLAN-services §3): accessor
+  counts any file cli.json names, a JSON store included (it already flagged
+  one; now held by a test), and `scan.walk` no longer walks into a nested git
+  repo, which is its own row. Probe: the top's four database findings
+  (knowledge-base, data-bridge, site-scrapers x2) were all nested repos; the top
+  now reads OK, and each repo's own row is unchanged. stores-readonly judges
+  each non-SQLite store's mode (no write bit); live it is UNCHECKED everywhere
+  so far (site-scrapers: all SQLite; tools/usage: the `~` bug above).
+
 ## Open decisions
 
 - The §14.8 contract shapes (2026-10-05): services.json, cli.json and
@@ -184,19 +207,16 @@
 
 ## Unconfirmed suspicions
 
-- check-json's run budget is 280s (under the runner's 300s). tools/todo's
-  `dev.sh check --json` took 240.1s on 2026-10-05, run alone; under `checks all`
-  (8 repos at once) it may pass 280s and come back `error`. Probe: `checks all
-  --roles audit` and read todo's check-json cell. If so, the budget becomes a
-  param (a repo's checks.json), not a bigger constant.
 - check-json decides "has --json" by the flag appearing anywhere in dev.sh. A
   dev.sh that mentions `--json` only for another subcommand would be run and
   fail `one-document` instead of being UNCHECKED. None does today (checked: the
   five that mention it all take `check --json`).
-- tools/setup was not run by check-json (the brief: nothing that writes there).
-  unverified: its `check --json` prints `{"ok", "gates"}` (its help line says
-  so) and so fails `schema: $: missing checks` -- settle: `cd tools/setup &&
-  ./dev.sh check --json | head -c 300`.
+- tools/setup's check-json cell (probed 2026-10-09, same `checks all` run as
+  the budget item in Own bugs): `error`, "did not finish in 280.0s", so its
+  shape is still unjudged. The old guess (`{"ok", "gates"}`, "missing checks")
+  is out of date: its dev.sh now says `--json: the one schema, via
+  devtools/checkjson.py` (setup 8187ca8). unverified: it conforms -- settle:
+  `cd tools/setup && ./dev.sh check --json | head -c 300`, run alone.
 
 - `rules-in-sync` checks only the four rule sentences (decision 12 revised,
   2026-10-04), anywhere in the file: a sentence kept but contradicted by the
@@ -312,6 +332,37 @@ from the top, 14 locations, 12 red.
   `uses=lib/ledger.sh` per hook, or a `user_scope` row per lib whose
   `registered` is true iff every hook using it is. Here: nothing changed;
   the test stays red until hooks answers.
+- harness (2026-10-09, via the dispatcher): the top's `.claude/cli.json`
+  (store agents.manifest.json) is not read by accessor, which reads a repo's
+  root `cli.json` only, and it has a `not_verbs` key that
+  schema/cli.schema.json (additionalProperties false) would refuse. Expected:
+  move it to the root as `cli.json` without `not_verbs`, or ask here for the
+  key and for `.claude/cli.json` as a second location.
+- site-scrapers (2026-10-09): accessor in its own row fails on
+  `data/failures.db: a store cli.json does not name`. Theirs: name it in
+  cli.json's `store`, or say why it is not a store.
+- rules-gated, the 8 reds (2026-10-09, `checks one rules-gated <repo>`):
+  addon-bench (14 unrowed sections), applications (14), emailTools (13),
+  knowledge-base (14), chronjobScheduler (15), data-bridge (13), scripts (10),
+  site-scrapers (10). One cause in all eight: CLAUDE.md carries the shared
+  rules as a HAND COPY with no `<!-- shared:rules@... -->` markers, so each
+  shared heading counts as the repo's own and needs a row (`setup <repo>
+  --only rules --dry-run` says "drift: CLAUDE.md has no shared:rules block
+  ... its owner replaces them with the block"). Closed by each repo's owner:
+  (1) replace the hand copy with setup's block (`setup <repo> --only rules`),
+  which rows the shared sections through this repo's gates.json; (2) row what
+  is left, its own sections, in its own gates.json as setup did (eb3ef96):
+  `Rules` in six of them, plus emailTools "Before committing, and while
+  working", chronjobScheduler "Cron constraints that don't bend", data-bridge
+  "The design decisions already made", site-scrapers "Commands" and "Working
+  in this repo". income and tools/setup are OK.
+- scripts, site-scrapers, tools/usage and the top (2026-10-09, `checks all`,
+  re-run alone for scripts): hooks-installed `drift` on no-inline-blobs.sh,
+  prefer-recipes.sh and their tests (the top also troubleshooting.sh) against
+  a committed tools/hooks source: real drift, each owner runs `setup <repo>
+  --only hooks --rebuild`. Since hooks b393ccd (store-guard.sh committed),
+  every repo with copies also reads store-guard.sh `missing` until its owner
+  runs `setup <repo> --only hooks`; this repo did (2026-10-09).
 - todo (2026-10-04, via the dispatcher): `todo check` has no `--json`
   (`./todo -C . check --json` -> "unrecognized arguments", exit 2), so
   todo-valid parses its text lines. A `--json` with the per-gate results and the
