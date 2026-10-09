@@ -7,14 +7,15 @@ HOOK = "#!/usr/bin/env bash\ncat >/dev/null 2>&1\nexit 0\n"
 # A stand-in for `hooks copies --json`, answering with a fixed report. The real
 # tool's output is held to this shape by tests/test_contract.py. The two
 # fixtures differ only in whether the user settings register the drifted hook
-# (`registered`), so that input is what turns the result. Standalone mode and
-# the null (unchecked) case are in tests/test_hooks_installed.py.
+# (`registered`), so that input is what turns the result. Standalone mode, the
+# null (unchecked) case and a source mid-edit (`source_uncommitted` true/null:
+# unchecked) are in tests/test_hooks_installed.py.
 def report(registered):
     return {"root": "<ws>", "ok": False, "unresolved": [], "locations": [
-        {"path": ".", "files": [{"file": ".claude/hooks/a.sh", "status": "ok"}]},
-        {"path": "r", "files": [{"file": ".claude/hooks/a.sh", "status": "drift"},
-                                {"file": ".claude/hooks/test-a.sh", "status": "missing"},
-                                {"file": ".claude/hooks/b.sh", "status": "extra"}]}],
+        {"path": ".", "files": [{"file": ".claude/hooks/a.sh", "status": "ok", "source_uncommitted": False}]},
+        {"path": "r", "files": [{"file": ".claude/hooks/a.sh", "status": "drift", "source_uncommitted": False},
+                                {"file": ".claude/hooks/test-a.sh", "status": "missing", "source_uncommitted": False},
+                                {"file": ".claude/hooks/b.sh", "status": "extra", "source_uncommitted": False}]}],
         "user_scope": {"settings": "<home>/.claude/settings.json", "exists": True, "error": None,
                        "source": "<ws>/tools/hooks/source", "left_per_repo": [], "ok": registered,
                        "hooks": [{"file": ".claude/hooks/a.sh", "kind": "source", "test": ".claude/hooks/test-a.sh",

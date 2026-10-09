@@ -27,35 +27,29 @@
   `code` view gets no file:line. Per-finding failures would mean parsing
   unittest's and `checks run --json`'s output into rows; not done.
 
-- `./dev.sh check` is RED, two causes, neither fixable here without a
-  decision (state 2026-10-08, after 63d72ab):
-  (1) tests/test_contract.py WithHooks (settings='registered'), a FIXTURE
-  test: `.claude/lib/ledger.sh` and `write-targets.sh` are "missing; not
-  covered by user scope (no shared hook of that name there)": user scope
-  never covers a lib. Open decision (hooks and setup): treat a lib copy as
-  covered when every hook that uses it is covered, or drop libs from the
-  test's expectation. The copies are setup's to install (decision 19).
-  (2) `checks run .` hooks-installed: on the second run the same day hooks
-  had committed prefer-recipes (978e6cb), so prefer-recipes.sh and its test
-  are REAL drift now (copies older than hooks HEAD: re-install with setup
-  --rebuild once tools/hooks is clean -- not done this session, since setup
-  would copy hooks' uncommitted no-inline-blobs edits too); no-inline-blobs.sh
-  and its test are FALSE drift (copies equal hooks HEAD, hooks has them ` M`;
-  see the next item).
-- hooks-installed judges drift against tools/hooks' WORKING TREE (hub's
-  report via the dispatcher, 2026-10-08). CONFIRMED read-only, no stash:
-  tools/hooks had ` M source/hooks/prefer-recipes.sh` and
-  `test-prefer-recipes.sh` (HEAD 43d2a1e); `cmp` of this repo's copies
-  against `git -C tools/hooks show HEAD:source/hooks/<f>`: same; against the
-  working-tree source: differ (line 126 / 159); hooks-installed reports both
-  as drift. So one mid-task edit in tools/hooks turns every repo's pre-commit
-  red. The comparison is made by `hooks copies --json` (tools/hooks' code);
-  this check only reads its `status`. Decision recorded (no change to the
-  check approved): the fix belongs in `hooks copies` -- compare against the
-  committed source (`git show HEAD:`), or mark a row whose source is
-  uncommitted (e.g. `source_dirty: true`) so hooks-installed can say
-  UNCHECKED ("source mid-edit") instead of a false drift. Reported to hooks
-  (below). Here, once hooks offers either, read it and add a fixture case.
+- `./dev.sh check` is RED, ONE cause (2026-10-09): tests/test_contract.py
+  WithHooks.test_hooks_installed_follows_the_real_user_scope_report
+  (settings='registered'). Not a stale expectation: "ok" is the right
+  real-world verdict (every hook registered at user scope runs from
+  tools/hooks/source and sources source/lib/, so a repo's missing lib copy is
+  harmless), but the check cannot reach it: `.claude/lib/ledger.sh` and
+  `write-targets.sh` read "missing; not covered by user scope (no shared hook
+  of that name there)" because `hooks copies --json`'s `user_scope` has no lib
+  rows and no `# hooks:` line links a lib to the hooks that source it.
+  Treating every missing lib as covered (or UNCHECKED) would hide a real fault:
+  a repo-copy hook whose lib is missing fails open. Reported to hooks
+  (2026-10-09, below). Open decision if hooks declines: drop libs from the
+  test's expectation (and say libs are unjudged at user scope).
+- hooks-installed reads `source_uncommitted` (done 2026-10-09; hooks
+  be71746): an uncovered missing/drift row whose source is mid-edit (true) or
+  unknown (null) is UNCHECKED, false is a fail. Held by
+  tests/test_hooks_installed.py (6 cases, 3 mutants, shape errors) and by
+  test_contract's real-tool test (a clone of tools/hooks, one source edited:
+  unchecked; the same edit committed: fail). First live use the same day:
+  tools/hooks had store-guard.sh (new) and lib/write-targets.sh (` M`)
+  mid-edit, and this repo's `checks run .` said UNCHECKED, not red.
+  Note: test_contract's real-tool tests read tools/hooks' live working tree,
+  so they now split their expected lines by each row's flag.
 
 ## Open decisions
 
@@ -305,6 +299,19 @@ from the top, 14 locations, 12 red.
   hooks HEAD 43d2a1e with both sources ` M`). Asked: compare against HEAD, or
   flag the row `source_dirty` so hooks-installed can say UNCHECKED. Settle:
   `cd tools/hooks && git status --short source/ && ./hooks copies ../.. --json`.
+  ANSWERED by hooks be71746 (`source_uncommitted`); read here 2026-10-09.
+- hooks (2026-10-09, via the dispatcher): libs and user scope. Observed:
+  `hooks copies --json` gives `.claude/lib/ledger.sh` / `write-targets.sh`
+  rows (missing in a repo with no copies) but `user_scope.hooks` has rows
+  only for hooks (kind source/plugin), and no `# hooks:` line says which hooks
+  source which lib (write-ledger.sh says `../lib/ledger.sh` in prose only).
+  Input: tools/checks `python3 -m unittest
+  tests.test_contract.WithHooks.test_hooks_installed_follows_the_real_user_scope_report`
+  (settings = the `hooks userscope` proposal, registering every hook).
+  Expected: a way to tell a lib copy is unneeded, e.g. a declared
+  `uses=lib/ledger.sh` per hook, or a `user_scope` row per lib whose
+  `registered` is true iff every hook using it is. Here: nothing changed;
+  the test stays red until hooks answers.
 - todo (2026-10-04, via the dispatcher): `todo check` has no `--json`
   (`./todo -C . check --json` -> "unrecognized arguments", exit 2), so
   todo-valid parses its text lines. A `--json` with the per-gate results and the

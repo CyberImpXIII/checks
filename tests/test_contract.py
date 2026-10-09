@@ -4,10 +4,11 @@ hooks-installed reads `hooks copies --json` the way that tool means it.
 Skipped, said out loud, when tools/hooks is not beside this tool."""
 import json
 import os
+import shutil
 import subprocess
 import unittest
 
-from tests.helpers import Case, WORKSPACE, repo, write
+from tests.helpers import Case, GIT_ENV, WORKSPACE, repo, write
 from checkslib import runner
 
 HOOKS = WORKSPACE / "tools" / "hooks" / "hooks" if WORKSPACE else None
@@ -51,11 +52,55 @@ class WithHooks(Case):
         self.assertIn("x/y/z/w", ours)
         self.assertNotIn("too/deep/for/the/walk", ours)
 
-    def shim(self, ws, settings):
-        """ws/tools/hooks/hooks: the real tool, told which user settings to read,
-        so this test never depends on (or reads) the real ~/.claude/settings.json."""
-        write(ws / "tools" / "hooks" / "hooks", f'#!/usr/bin/env bash\nexec "{HOOKS}" "$@" --settings "{settings}"\n',
-              0o755)
+    def shim(self, ws, settings, hooks=None):
+        """ws/tools/hooks/hooks: the real tool (or a clone of it), told which user
+        settings to read, so this test never depends on (or reads) the real
+        ~/.claude/settings.json."""
+        write(ws / "tools" / "hooks" / "hooks",
+              f'#!/usr/bin/env bash\nexec "{hooks or HOOKS}" "$@" --settings "{settings}"\n', 0o755)
+
+    def test_hooks_installed_reads_the_real_source_uncommitted(self):
+        """A clone of tools/hooks, every copy installed in ws/a from it (all ok),
+        then ONE source file edited in the clone: the real `hooks copies` marks
+        that copy drift with source_uncommitted true, and hooks-installed says
+        unchecked. The same edit committed: source_uncommitted false, a real fail.
+        Only the commit changes between the two runs."""
+        ws = self.fixture_ws()
+        clone = self.tmp / "hooksclone"
+        subprocess.run(["git", "clone", "-q", "--local", str(HOOKS.parent), str(clone)], check=True,
+                       capture_output=True, text=True, stdin=subprocess.DEVNULL)
+        self.shim(ws, self.tmp / "user" / "settings.json", hooks=clone / "hooks")   # no user settings file
+        run = lambda: json.loads(subprocess.run([str(ws / "tools" / "hooks" / "hooks"), "copies", str(ws), "--json"],
+                                                capture_output=True, text=True, stdin=subprocess.DEVNULL,
+                                                timeout=240).stdout)
+        rows = lambda rep: {f["file"]: f for l in rep["locations"] if l["path"] == "a" for f in l["files"]}
+        files = rows(run())
+        self.assertTrue(files, "hooks copies expects hooks in a fixture repo")
+        src = lambda f: clone / "source" / f.removeprefix(".claude/")     # .claude/hooks/x -> source/hooks/x
+        for f in files:
+            self.assertTrue(src(f).is_file(), f"no source at {src(f)} for {f}: the dest->source mapping went stale")
+            shutil.copy2(src(f), write(ws / "a" / f, ""))
+        self.assertEqual({f: r["status"] for f, r in rows(run()).items()}, {f: "ok" for f in files})
+        res = self.cli_json("one", "hooks-installed", ws / "a", "--root", ws)[1]["results"][0]
+        self.assertEqual(res["status"], "ok", res["lines"])
+        edited = next(f for f in sorted(files)
+                      if f.startswith(".claude/hooks/") and not os.path.basename(f).startswith("test-"))
+        with open(src(edited), "a") as fh:
+            fh.write("true\n")                          # a code line: `copies` compares by meaning
+        row = rows(run())[edited]
+        self.assertEqual((row["status"], row["source_uncommitted"]), ("drift", True))
+        res = self.cli_json("one", "hooks-installed", ws / "a", "--root", ws)[1]["results"][0]
+        self.assertEqual(res["status"], "unchecked", res["lines"])
+        self.assertIn("source not committed", res["lines"][0])
+        self.assertIn(edited, res["lines"][0])
+        subprocess.run(["git", "-C", str(clone), "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null",
+                        "commit", "-q", "-am", "t"], check=True, capture_output=True, text=True,
+                       env=dict(os.environ, **GIT_ENV), stdin=subprocess.DEVNULL)
+        row = rows(run())[edited]
+        self.assertEqual((row["status"], row["source_uncommitted"]), ("drift", False))
+        res = self.cli_json("one", "hooks-installed", ws / "a", "--root", ws)[1]["results"][0]
+        self.assertEqual(res["status"], "fail", res["lines"])
+        self.assertEqual(res["lines"], [f"{edited}: drift; not covered by user scope (no user settings file)"])
 
     def test_hooks_installed_red_exactly_when_hooks_copies_says_so(self):
         ws = self.fixture_ws()
@@ -66,11 +111,21 @@ class WithHooks(Case):
         self.assertEqual(p.returncode, 1, "fixture repos hold no copies: hooks copies must say missing")
         statuses = {f["status"] for l in rep["locations"] for f in l["files"]}
         self.assertTrue(statuses <= {"ok", "missing", "drift", "not-executable", "extra"}, statuses)
+        flags = [f.get("source_uncommitted", "absent") for l in rep["locations"] for f in l["files"]]
+        self.assertTrue(flags and all(v in (True, False, None) for v in flags), set(map(str, flags)))
         self.assertIs(rep["user_scope"]["exists"], False)
         res = self.cli_json("one", "hooks-installed", ws / "a", "--root", ws)[1]["results"][0]
+        # The real tools/hooks may be mid-edit: a row whose source is not committed
+        # is not judged (listed after the verdicts), whatever this test's moment.
+        mine = [f for l in rep["locations"] if l["path"] == "a" for f in l["files"]]
+        judged = [f"{f['file']}: missing; not covered by user scope (no user settings file)"
+                  for f in mine if f["source_uncommitted"] is False]
+        unjudged = [f["file"] for f in mine if f["source_uncommitted"] is not False]
+        self.assertTrue(judged, "every source uncommitted: settle with tools/hooks clean")
         self.assertEqual(res["status"], "fail")
-        self.assertTrue(all(l.endswith(": missing; not covered by user scope (no user settings file)")
-                            for l in res["lines"]), res["lines"])
+        self.assertEqual(res["lines"][:len(judged)], judged)
+        self.assertEqual([l.split(":")[0] for l in res["lines"][len(judged):]], unjudged)
+        self.assertTrue(all("not judged, tools/hooks" in l for l in res["lines"][len(judged):]), res["lines"])
 
     def test_hooks_installed_follows_the_real_user_scope_report(self):
         """The same missing copies, three user settings: the real `hooks userscope`

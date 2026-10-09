@@ -12,6 +12,11 @@
 #   Not covered, and red: `registered: false`, no such row, or no user settings
 #   file. Unknown, and UNCHECKED (never ok): `registered: null` or a
 #   `user_scope.error`. A not-executable copy is red whatever user scope says.
+#   A missing or drifted copy NOT covered is judged only against a committed
+#   source: `hooks copies` compares with tools/hooks' working tree, so its row's
+#   `source_uncommitted` true (the source is mid-edit) or null (git cannot say)
+#   is UNCHECKED, never ok and never a false drift; false is a real fail. (A
+#   not-executable copy matches its source, so it is red against either one.)
 #   On ok it says which scope covered each hook: `repo copy: <files>` and
 #   `covered by user scope: <files>`. A report not in that shape is an error.
 #   Standalone (a fresh clone, or no hooks tool): there is no source to compare
@@ -82,6 +87,14 @@ def coverage(us, f):
     return None, "registered: null"
 
 
+def source_state(f):
+    """(True | False | None): is the source this non-ok row was compared with
+    committed? Read from the row's `source_uncommitted`; absent is a broken report."""
+    if "source_uncommitted" not in f or not is_tristate(f["source_uncommitted"]):
+        broken(f"a non-ok `locations[].files` row has no `source_uncommitted: true|false|null`: {f!r}")
+    return f["source_uncommitted"]
+
+
 def workspace_mode(ctx, cli):
     try:
         p = subprocess.run([str(cli), "copies", str(ctx.workspace), "--json"], capture_output=True,
@@ -100,15 +113,18 @@ def workspace_mode(ctx, cli):
     files = mine[0].get("files") or []
     if not files:
         api.done(unchecked=f"`hooks copies` expects no hook in {ctx.rel}; nothing to compare")
-    repo_copy, covered, red, unknown = [], [], [], []
+    repo_copy, covered, red, unknown, mid_edit = [], [], [], [], []
     for f in files:
         name, status = f.get("file"), f.get("status")
         if status == "ok":
             repo_copy.append(name)
         elif status in COVERABLE:
+            dirty = source_state(f)
             state, why = coverage(us, name)
             if state is True:
                 covered.append(name)
+            elif dirty is not False:    # compared with a source mid-edit, or one git cannot place
+                mid_edit.append((name, status, "source not committed" if dirty else "source_uncommitted: null"))
             elif state is False:
                 red.append(f"{name}: {status}; not covered by user scope ({why})")
             else:
@@ -116,11 +132,19 @@ def workspace_mode(ctx, cli):
         elif status in FAILING:
             red.append(f"{name}: {status}")
     if red:     # a fail lists every copy not shown covered, the unknown ones too
-        api.done(red + [f"{n}: {s}; coverage by user scope unknown ({why})" for n, s, why in unknown])
-    if unknown:
-        whys = sorted({why for _, _, why in unknown})
-        api.done(unchecked=f"user scope could not tell ({'; '.join(whys)}): coverage unknown for "
+        api.done(red + [f"{n}: {s}; coverage by user scope unknown ({why})" for n, s, why in unknown]
+                 + [f"{n}: {s}; not judged, tools/hooks {why}" for n, s, why in mid_edit])
+    if unknown or mid_edit:
+        reasons = []
+        if mid_edit:
+            whys = sorted({why for _, _, why in mid_edit})
+            reasons.append(f"compared with a tools/hooks source not known to be committed ({'; '.join(whys)}), "
+                           "so missing/drift is not a verdict: " + ", ".join(n for n, _, _ in mid_edit))
+        if unknown:
+            whys = sorted({why for _, _, why in unknown})
+            reasons.append(f"user scope could not tell ({'; '.join(whys)}): coverage unknown for "
                            + ", ".join(n for n, _, _ in unknown))
+        api.done(unchecked=" | ".join(reasons))
     if repo_copy:
         print("repo copy: " + ", ".join(repo_copy))
     if covered:

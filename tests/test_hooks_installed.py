@@ -7,7 +7,9 @@ covered when the user settings register that shared hook in place, as
 `user_scope` reports it: a `kind: source` row whose `file` (or `test`) is the
 copy, with `registered: true`. `false`, no row, or no user settings file:
 not covered (red). `null`, or a `user_scope.error`: unknown, so UNCHECKED and
-never ok. A not-executable copy is never covered. Each case below changes
+never ok. A not-executable copy is never covered. A missing/drifted copy not
+covered is a verdict only when its row's `source_uncommitted` is false: true
+(tools/hooks mid-edit) or null is UNCHECKED. Each case below changes
 only the user-scope input, so the input is shown to change the result; the
 mutants at the bottom show each clause of the rule is load-bearing."""
 import json
@@ -36,8 +38,9 @@ def scope(rows, exists=True, error=None):
 
 
 def report(files, user_scope):
-    rep = {"root": "<ws>", "ok": False, "unresolved": [],
-           "locations": [{"path": "r", "files": [{"file": f, "status": s} for f, s in files]}]}
+    """files: (file, status) with a committed source, or (file, status, source_uncommitted)."""
+    rows = [{"file": f[0], "status": f[1], "source_uncommitted": f[2] if len(f) > 2 else False} for f in files]
+    rep = {"root": "<ws>", "ok": False, "unresolved": [], "locations": [{"path": "r", "files": rows}]}
     if user_scope is not None:
         rep["user_scope"] = user_scope
     return rep
@@ -130,6 +133,50 @@ class HooksInstalled(Case):
         self.assertEqual(res["status"], "ok", res["lines"])
         self.assertEqual(res["lines"], [f"repo copy: .claude/hooks/c.sh", f"covered by user scope: {A}, {B}"])
 
+    # -- the source the copy was compared with (`source_uncommitted`, hooks be71746) --
+    # `hooks copies` compares with tools/hooks' WORKING TREE: while a source is
+    # mid-edit a copy equal to the committed file reads drift. Only that flag
+    # changes between these cases and test_registered_false_is_not_covered.
+
+    def test_source_mid_edit_is_unchecked_not_a_false_drift(self):
+        res = self.run_with(report([(A, "drift", True), (TA, "missing", True)], scope([row(A, False)])))
+        self.assertEqual(res["status"], "unchecked", res["lines"])
+        self.assertEqual(len(res["lines"]), 1)
+        self.assertIn("source not committed", res["lines"][0])
+        self.assertIn(f"not a verdict: {A}, {TA}", res["lines"][0])
+
+    def test_source_uncommitted_null_is_unchecked_never_ok(self):
+        res = self.run_with(report([(A, "drift", None)], scope([row(A, False)])))
+        self.assertEqual(res["status"], "unchecked", res["lines"])
+        self.assertIn("source_uncommitted: null", res["lines"][0])
+
+    def test_source_committed_drift_is_still_a_fail(self):
+        res = self.run_with(report([(A, "drift", False)], scope([row(A, False)])))
+        self.assertEqual(res["status"], "fail", res["lines"])
+        self.assertEqual(res["lines"], [f"{A}: drift; not covered by user scope (not registered there)"])
+
+    def test_mid_edit_beside_a_real_fail_is_red_and_says_both(self):
+        res = self.run_with(report([(A, "drift", True), (B, "missing", False)], scope([row(A, False), row(B, False)])))
+        self.assertEqual(res["status"], "fail", res["lines"])
+        self.assertEqual(res["lines"], [f"{B}: missing; not covered by user scope (not registered there)",
+                                        f"{A}: drift; not judged, tools/hooks source not committed"])
+
+    def test_mid_edit_and_unknown_coverage_are_both_said(self):
+        res = self.run_with(report([(A, "drift", True), (B, "missing", False)], scope([row(A, False), row(B, None)])))
+        self.assertEqual(res["status"], "unchecked", res["lines"])
+        self.assertIn(f"not a verdict: {A}", res["lines"][0])
+        self.assertIn(f"coverage unknown for {B}", res["lines"][0])
+
+    def test_covered_by_user_scope_wins_over_a_mid_edit_source(self):
+        res = self.run_with(report([(A, "drift", True)], scope([row(A, True)])))
+        self.assertEqual(res["status"], "ok", res["lines"])
+        self.assertEqual(res["lines"], [f"covered by user scope: {A}"])
+
+    def test_not_executable_is_red_whatever_the_source_state(self):
+        # it matches the source as edited, so it is not executable against either one
+        res = self.run_with(report([(A, "not-executable", True)], scope([row(A, False)])))
+        self.assertEqual((res["status"], res["lines"]), ("fail", [f"{A}: not-executable"]))
+
     def test_text_output_names_the_scope_on_ok(self):
         ws, r = self.ws_with(report(DRIFT, scope([row(A, True)])))
         p = run_cli("one", "hooks-installed", r, "--root", ws)
@@ -148,6 +195,9 @@ class HooksInstalled(Case):
             "registered a string": report(DRIFT, scope([row(A, "yes")])),
             "registered 1": report(DRIFT, scope([row(A, 1)])),
             "row without kind": report(DRIFT, scope([{k: v for k, v in row(A, True).items() if k != "kind"}])),
+            "source_uncommitted a string": report([(A, "drift", "yes")], scope([row(A, False)])),
+            "non-ok row without source_uncommitted": {**report(DRIFT, scope([row(A, False)])), "locations": [
+                {"path": "r", "files": [{"file": A, "status": "drift"}]}]},
         }
         for what, rep in bad.items():
             with self.subTest(case=what):
@@ -187,6 +237,12 @@ class HooksInstalled(Case):
                                       report([(TA, "missing")], scope([row(A, True)])), "ok"),
             "plugin rows cover": ('h["kind"] == "source"', 'True',
                                   report([(B, "missing")], scope([row(B, True, kind="plugin")])), "fail"),
+            "source mid-edit ignored": ("elif dirty is not False:", "elif False:",
+                                        report([(A, "drift", True)], scope([row(A, False)])), "unchecked"),
+            "null source counted as committed": ("elif dirty is not False:", "elif dirty is True:",
+                                                 report([(A, "drift", None)], scope([row(A, False)])), "unchecked"),
+            "source flag judges committed too": ("elif dirty is not False:", "elif True:",
+                                                 report([(A, "drift", False)], scope([row(A, False)])), "fail"),
         }
         text = CHECK.read_text()
         for what, (old, new, rep, real) in mutants.items():
