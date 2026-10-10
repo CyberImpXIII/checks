@@ -1,0 +1,31 @@
+{
+ "_comment": "This repo's `./dev.sh check`, in parts, run by checkslib/parts.py (its header is the format). Every part reads the whole repo ('.') unless it says otherwise; a test part does not read the other test files or TODO.md. A part that reads what no files list can name (another repo's live tree, the workspace, the user's settings) says `always` and is never skipped by --resume. tests/test_parts.py holds this file to the test modules (one part per tests/test_*.py) and to dev.sh's documented steps.",
+ "defaults": {"files": [".", "tests/__init__.py", "tests/helpers.py"], "timeout_s": 600, "role": "code"},
+ "parts": [
+  {"name": "test.decl", "run": "python3 -m unittest tests.test_decl", "files": ["tests/test_decl.py"], "except": ["tests/", "TODO.md"]},
+  {"name": "test.meta", "run": "python3 -m unittest tests.test_meta", "files": ["tests/test_meta.py"], "except": ["tests/", "TODO.md"]},
+  {"name": "test.parts", "run": "python3 -m unittest tests.test_parts", "files": ["tests/test_parts.py"], "except": ["tests/", "TODO.md"]},
+  {"name": "test.contract_files", "run": "python3 -m unittest tests.test_contract_files", "files": ["tests/test_contract_files.py"], "except": ["tests/", "TODO.md"]},
+  {"name": "test.runner", "run": "python3 -m unittest tests.test_runner", "files": ["tests/test_runner.py"], "except": ["tests/", "TODO.md"]},
+  {"name": "test.settings_tracked", "run": "python3 -m unittest tests.test_settings_tracked", "files": ["tests/test_settings_tracked.py"], "except": ["tests/", "TODO.md"]},
+  {"name": "test.stores_exported", "run": "python3 -m unittest tests.test_stores_exported", "files": ["tests/test_stores_exported.py"], "except": ["tests/", "TODO.md"]},
+  {"name": "test.todo_valid", "run": "python3 -m unittest tests.test_todo_valid", "files": ["tests/test_todo_valid.py"], "except": ["tests/", "TODO.md"]},
+  {"name": "test.tree_clean", "run": "python3 -m unittest tests.test_tree_clean", "files": ["tests/test_tree_clean.py"], "except": ["tests/", "TODO.md"]},
+  {"name": "test.hooks_installed", "run": "python3 -m unittest tests.test_hooks_installed", "files": ["tests/test_hooks_installed.py"], "except": ["tests/", "TODO.md"]},
+  {"name": "test.regen", "run": "python3 -m unittest tests.test_regen", "files": ["tests/test_regen.py"], "except": ["tests/", "TODO.md"]},
+  {"name": "test.rules_in_sync", "run": "python3 -m unittest tests.test_rules_in_sync", "files": ["tests/test_rules_in_sync.py"], "except": ["tests/", "TODO.md"],
+   "always": "reads the workspace top's CLAUDE.md, outside this repo"},
+  {"name": "test.no_secrets", "run": "python3 -m unittest tests.test_no_secrets", "files": ["tests/test_no_secrets.py"], "except": ["tests/", "TODO.md"],
+   "always": "runs tools/hooks' secret-shape test, outside this repo"},
+  {"name": "test.rules_gated", "run": "python3 -m unittest tests.test_rules_gated", "files": ["tests/test_rules_gated.py"], "except": ["tests/", "TODO.md"],
+   "always": "runs rules-gated on the workspace top, whose gates.json rows name files across every repo"},
+  {"name": "test.check_json", "run": "python3 -m unittest tests.test_check_json", "files": ["tests/test_check_json.py"], "except": ["tests/", "TODO.md"]},
+  {"name": "test.check_partial", "run": "python3 -m unittest tests.test_check_partial", "files": ["tests/test_check_partial.py"], "except": ["tests/", "TODO.md"], "timeout_s": 900},
+  {"name": "test.contract", "run": "python3 -m unittest tests.test_contract", "files": ["tests/test_contract.py"], "except": ["tests/", "TODO.md"], "timeout_s": 900,
+   "always": "runs the real tools/hooks and tools/todo, and `hooks copies` walks the whole workspace"},
+  {"name": "fixtures", "run": "./dev.sh fixtures", "role": "tests", "timeout_s": 900},
+  {"name": "run", "run": "./dev.sh run", "role": "audit",
+   "always": "`./dev.sh run` (checks run .) reads tools/hooks, the workspace top and the user's settings (hooks-installed, rules-in-sync, rules-gated)"},
+  {"name": "audit", "run": "./dev.sh audit", "role": "audit"}
+ ]
+}

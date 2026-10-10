@@ -8,12 +8,13 @@ is written once here and never re-implemented in a repo.
 
 | doing this | use |
 |---|---|
-| before committing | `./dev.sh check` (unit tests, every check's fixtures, this repo's own checks, the roster audit) |
+| before committing | `./dev.sh check` (the parts in `check.parts.json`: a part per test module, every check's fixtures, this repo's own checks, the roster audit); after a red run, `./dev.sh check --resume` re-runs only the parts whose files changed or that failed |
+| run a suite in parts (each its own timeout, results saved as they end, resume, "N of M passed") | `checkslib/parts.py` -- the ONE shared runner (PLAN-small-tasks §7), standard library only, `VERSION` in its hash; its header is the parts-file format; `tests/test_parts.py` holds it, check-partial's fixtures run it (with mutants) |
 | run the gates on a repo | `./checks run [PATH]` (exit 1 on any fail or error) |
 | run them everywhere | `./checks all [ROOT] --names <roster names>` -- a repo-by-check grid, then every red cell's findings |
 | what a check proves, how to pass it | `./checks explain <name>` |
 | what the source holds | `./checks list [--json]` (setup's check component should read the `--json`) |
-| the one shape of every repo's `dev.sh check --json` | `schema/check-json.schema.json` (read by `checkslib/checkjson.py`, which refuses a keyword it does not enforce); this repo prints it via `checkslib/devjson.py` |
+| the one shape of every repo's `dev.sh check --json` | `schema/check-json.schema.json` (read by `checkslib/checkjson.py`, which refuses a keyword it does not enforce); this repo prints it via `checkslib/parts.py`, one check per part |
 | the shapes of a repo's contract files (services.json, cli.json, node.json) and of a store's `verify --json` | `schema/{services,cli,node,verify}.schema.json` (read by `checkslib/contract.py`, one reader for every check; each `x-rules` id is a function there, held equal by `tests/test_contract_files.py`) |
 | classify a rule (gate or prose) | `gates.json` (shared block and the top; its `keys` are the vocabulary), or the repo's own `gates.json`; held by `rules-gated` |
 | read CLAUDE.md sections (headings, the shared block) | `checkslib/claudemd.py`, the one reader (rules-in-sync, rules-gated) |
@@ -25,7 +26,7 @@ is written once here and never re-implemented in a repo.
 |---|---|---|
 | `accessor` | `all` | a store (`*.db`, `*.sqlite*`, the `stores` param) has a cli.json naming it and its one CLI, cli.json is valid, and no file outside the CLI (and the `impl` param) names the store's file -- any file cli.json names counts, a JSON store included; a nested git repo's files are its own row's; no store and no cli.json is ok |
 | `check-json` | `roles:audit` | `./dev.sh check --json` prints the one schema (`schema/check-json.schema.json`, PLAN-agent-groups.md §4.4) and keeps its `x-rules` (exit 0 iff ok, ok iff nothing fail/error, counts match failures, ...); the shape, not a green suite; no dev.sh or no `--json` in it is UNCHECKED; audit-only because it runs the suite |
-| `check-partial` | `roles:audit` | the runner fails in parts (PLAN-small-tasks.md §3): handed a three-part suite through `CHECK_PARTS` and `PROGRESS_FILE`, a run killed while one part hangs leaves `passed_steps` naming exactly what passed; after one part's file is edited, `check --json --resume` runs that part alone; a part past its `timeout_s` is stopped and reported not ok while the others report ok; the repo's own suite never runs; no dev.sh or no `CHECK_PARTS` in it is UNCHECKED |
+| `check-partial` | `roles:audit` | the runner fails in parts (PLAN-small-tasks.md §3): handed a three-part suite through `CHECK_PARTS` and `PROGRESS_FILE`, a run killed while one part hangs leaves `passed_steps` naming exactly what passed; after one part's file is edited, `check --json --resume` runs that part alone and still reports all three ok; a part past its `timeout_s` is stopped and reported not ok while the others report ok, and the text run says `2 of 3 passed; failed:` naming that part alone; the repo's own suite never runs; its fixtures run the real `checkslib/parts.py`, broken one property at a time; no dev.sh or no `CHECK_PARTS` in it is UNCHECKED |
 | `docs-rows` | `repos:.` | the top CLAUDE.md tool table has a row per repo and a path per row |
 | `help-matches` | `all` | `dev.sh help` lists exactly the subcommands its `case` implements |
 | `hooks-installed` | `all` | each shared hook runs here: a repo copy that agrees with tools/hooks, or a missing/drifted copy covered by a user-scope registration (both read from `hooks copies --json`; `registered: null` is UNCHECKED; an uncovered missing/drift row whose `source_uncommitted` is true or null -- tools/hooks mid-edit -- is UNCHECKED, false is a fail); on ok it names `repo copy` vs `covered by user scope`; standalone: present, executable, parse |

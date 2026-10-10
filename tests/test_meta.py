@@ -44,11 +44,17 @@ class Meta(unittest.TestCase):
         self.assertTrue({"check", "test", "fixtures", "run", "audit"} <= implemented)
 
     def test_dev_sh_check_runs_every_step_it_documents(self):
+        """check is check.parts.json through the shared runner: `test` as one part
+        per test module (held by tests/test_parts.py), every other documented step
+        as a part that runs `./dev.sh <step>`, and no part runs a step not documented."""
         text = (TOOL_ROOT / "dev.sh").read_text()
-        steps = set(re.search(r"for step in ([\w ]+); do", text).group(1).split())
+        self.assertIn('checkslib/parts.py" run "${CHECK_PARTS:-$HERE/check.parts.json}" "$@"', text)
+        parts = json.loads((TOOL_ROOT / "check.parts.json").read_text())["parts"]
+        steps = {m[1] for p in parts if (m := re.fullmatch(r"\./dev\.sh (\S+)", p["run"]))}
         usage = text.split("cat <<'EOF'", 1)[1].split("\nEOF", 1)[0]
         documented = set(re.findall(r"^  ([a-z][\w-]*)\s", usage, re.M)) - {"check"}
-        self.assertEqual(steps, documented)
+        self.assertNotIn("test", steps)
+        self.assertEqual(steps | {"test"}, documented)
 
     def test_vocab_keys_consumed_both_ways(self):
         code = (TOOL_ROOT / "checkslib" / "decl.py").read_text()

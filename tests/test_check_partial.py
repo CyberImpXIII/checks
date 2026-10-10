@@ -1,10 +1,11 @@
-"""check-partial (PLAN-small-tasks.md §3.7), through the CLI on the fixture's
-hand-written parts runner: the working runner is ok; each fault alone turns
-exactly its own scenario red (killed, changed, hung), so each scenario is
-shown able to fail by itself; a resume that runs nothing is red too (the
-counterfactual of rerunning everything); a runner that writes the repo's own
-progress file is named; and the UNCHECKED paths (no dev.sh, no CHECK_PARTS,
-nested) and the not-executable fail."""
+"""check-partial (PLAN-small-tasks.md §3.7), through the CLI, on THE shared
+runner (checkslib/parts.py) rendered into a fixture repo: the real runner is
+ok; each mutant of it alone turns exactly its own scenario red (killed,
+changed, hung), so each scenario is shown able to fail by itself and each
+property the runner claims is shown to change the result; a resume that runs
+nothing is red too (the counterfactual of rerunning everything); a runner that
+writes the repo's own progress file is named; and the UNCHECKED paths (no
+dev.sh, no CHECK_PARTS, nested) and the not-executable fail."""
 import importlib.util
 import os
 
@@ -16,6 +17,23 @@ _spec.loader.exec_module(fx)
 
 FAST = {"CHECKS_CHECK_PARTIAL_RUN_TIMEOUT": "8"}
 
+# Each mutant -> (the one scenario it turns red, a line it must print).
+CASES = {
+    "late": ("killed", "killed: a run killed while p2 hung left no progress file with `passed_steps`"
+                       " at PROGRESS_FILE (passed by then: p1)"),
+    "eager": ("killed", "killed: a run killed while p2 hung left `passed_steps` ['p1', 'p2', 'p3'],"
+                        " but the parts that had passed were ['p1']"),
+    "rerun": ("changed", "changed: after an edit to p3's file only, `--resume` ran p1, p2, p3 (wanted p3 alone)"),
+    "skip": ("changed", "changed: after an edit to p3's file only, `--resume` ran no part (wanted p3 alone)"),
+    "drop-skipped": ("changed", "changed: `--resume` reported 1 part(s), p1=None, p2=None (wanted all 3, each ok:"
+                                " a skipped part passed, so N of M counts it)"),
+    "no-limit": ("hung", "hung: one part past its timeout_s (2s) held the whole run: it did not finish in 8s"),
+    "count": ("hung", "hung: the text run said `check: 3 of 3 passed; failed: p2 (timeout after 2s; no output)`"
+                      " (wanted 2 of 3 passed)"),
+    "unnamed": ("hung", "hung: the text run's failed list named nothing in"
+                        " `check: 2 of 3 passed; failed: (timeout after 2s)` (wanted p2 alone)"),
+}
+
 
 class CheckPartial(Case):
     def one(self, r, env=None):
@@ -24,25 +42,32 @@ class CheckPartial(Case):
     def scenarios(self, result):
         return sorted({line.split(":", 1)[0] for line in result["lines"]})
 
-    def test_a_working_runner_is_ok(self):
+    def test_the_real_runner_is_ok(self):
         r = self.one(fx.repo(self.tmp))
         self.assertEqual(r["status"], "ok", r["lines"])
-        self.assertEqual(r["lines"], ["killed, changed and hung: each shown on a three-part suite"])
+        self.assertEqual(r["lines"], ["killed, changed and hung: each shown on a three-part suite (with N of M, text and --json)"])
 
-    def test_each_fault_alone_fails_its_own_scenario_alone(self):
-        cases = {
-            "late": ("killed", "killed: a run killed while p2 hung left no progress file with `passed_steps`"
-                               " at PROGRESS_FILE (passed by then: p1)"),
-            "rerun": ("changed", "changed: after an edit to p3's file only, `--resume` ran p1, p2, p3 (wanted p3 alone)"),
-            "no-limit": ("hung", "hung: one part past its timeout_s (2s) held the whole run: it did not finish in 8s"),
-            "eager": ("killed", "killed: a run killed while p2 hung left `passed_steps` ['p1', 'p2', 'p3'],"
-                                " but the parts that had passed were ['p1']"),
-            "skip": ("changed", "changed: after an edit to p3's file only, `--resume` ran no part (wanted p3 alone)"),
-        }
-        for i, (fault, (scenario, line)) in enumerate(cases.items()):
-            with self.subTest(fault=fault):
-                r = self.one(fx.repo(self.tmp / str(i), (fault,)))
-                self.assertEqual(r["status"], "fail")
+    def test_the_fixture_runs_the_real_runner_byte_for_byte(self):
+        repo = fx.repo(self.tmp)
+        self.assertEqual((repo / "parts.py").read_bytes(), (TOOL_ROOT / "checkslib" / "parts.py").read_bytes())
+
+    def test_every_mutant_is_tested_and_aims_at_one_place(self):
+        self.assertEqual(sorted([*CASES, "own-file"]), sorted(fx.MUTANTS))
+        for name in fx.MUTANTS:
+            with self.subTest(mutant=name):
+                self.assertNotEqual(fx.mutate((name,)), fx.mutate())
+        with self.assertRaises(ValueError):
+            fx.MUTANTS["bogus"] = ("this text is in no runner", "")
+            try:
+                fx.mutate(("bogus",))
+            finally:
+                del fx.MUTANTS["bogus"]
+
+    def test_each_mutant_alone_fails_its_own_scenario_alone(self):
+        for i, (mutant, (scenario, line)) in enumerate(CASES.items()):
+            with self.subTest(mutant=mutant):
+                r = self.one(fx.repo(self.tmp / str(i), (mutant,)))
+                self.assertEqual(r["status"], "fail", r["lines"])
                 self.assertEqual(self.scenarios(r), [scenario], r["lines"])
                 self.assertIn(line, r["lines"])
 

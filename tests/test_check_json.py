@@ -2,9 +2,7 @@
 per rule (each shown red for its own reason, and each cross rule shown to be
 the one that catches it), the check's UNCHECKED and error paths, and this
 repo's own `./dev.sh check --json` validated through the real dev.sh."""
-import contextlib
 import copy
-import io
 import json
 import os
 import shutil
@@ -14,7 +12,7 @@ import unittest
 from unittest import mock
 
 from tests.helpers import Case, TOOL_ROOT, write
-from checkslib import api, checkjson, devjson
+from checkslib import api, checkjson
 
 SCHEMA = checkjson.load()
 
@@ -266,35 +264,32 @@ class TheCheck(Case):
 
 
 class OwnDevJson(Case):
-    def test_rows_make_a_conforming_document_green_and_red(self):
-        green = devjson.document([("test", "code", 0), ("audit", "audit", 0)])
-        self.assertEqual(checkjson.validate(json.dumps(green), 0), [])
-        red = devjson.document([("test", "code", 1), ("audit", "audit", 0)])
-        self.assertEqual(checkjson.validate(json.dumps(red), 1), [])
-        self.assertEqual(red["checks"][0]["failures"][0]["role"], "code")
-        with contextlib.redirect_stderr(io.StringIO()) as err:
-            self.assertEqual((devjson.main([]), devjson.main(["test:code"])), (64, 64))
-        self.assertIn("a report of nothing is not a pass", err.getvalue())
-
     def test_the_real_dev_sh_check_json_conforms_when_red(self):
-        """A copy of this tool whose unit tests are one failing test: the real
-        dev.sh runs every step and prints through devjson; the document
-        validates, says `test` failed with role code, and exits 1."""
+        """A copy of this tool whose check.parts.json is one failing unit test and
+        the roster audit: the real dev.sh runs both through the shared runner;
+        the document validates, says the test part failed with role code and
+        its FAIL line, the audit ok, and exits 1. (tests/test_parts.py holds
+        the runner's documents green and red on hand-made suites.)"""
         dst = self.tmp / "tools" / "checks"
-        shutil.copytree(TOOL_ROOT, dst, ignore=shutil.ignore_patterns(".git", "__pycache__"))
+        shutil.copytree(TOOL_ROOT, dst, ignore=shutil.ignore_patterns(".git", "__pycache__", ".progress"))
         shutil.rmtree(dst / "tests")
         write(dst / "tests" / "__init__.py", "")
         write(dst / "tests" / "test_stub.py",
               "import unittest\n\n\nclass Stub(unittest.TestCase):\n    def test_red(self):\n        self.fail('planted')\n")
-        env = {k: v for k, v in os.environ.items() if k != "CHECKS_CHECK_JSON_ACTIVE"}
+        write(dst / "check.parts.json", json.dumps({"parts": [
+            {"name": "test.stub", "run": "python3 -m unittest tests.test_stub", "files": ["tests"],
+             "timeout_s": 60, "role": "code"},
+            {"name": "audit", "run": "./dev.sh audit", "files": ["."], "timeout_s": 120, "role": "audit"}]}))
+        env = {k: v for k, v in os.environ.items() if k not in ("CHECKS_CHECK_JSON_ACTIVE", "CHECK_PARTS", "PROGRESS_FILE")}
         p = subprocess.run([str(dst / "dev.sh"), "check", "--json"], capture_output=True, text=True,
                            env=env, stdin=subprocess.DEVNULL, timeout=280)
         self.assertEqual(checkjson.validate(p.stdout, p.returncode), [], p.stdout + p.stderr[-400:])
         doc = json.loads(p.stdout)
-        self.assertEqual([c["name"] for c in doc["checks"]], ["test", "fixtures", "run", "audit"])
-        self.assertEqual(doc["checks"][0]["status"], "fail")
+        self.assertEqual([(c["name"], c["status"]) for c in doc["checks"]], [("test.stub", "fail"), ("audit", "ok")])
         self.assertEqual(doc["checks"][0]["failures"][0]["role"], "code")
+        self.assertIn("FAIL: test_red", doc["checks"][0]["failures"][0]["message"])
         self.assertEqual(p.returncode, 1)
+        self.assertTrue((dst / ".progress" / "check.json").is_file())
 
 
 if __name__ == "__main__":

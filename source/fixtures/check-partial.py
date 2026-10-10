@@ -1,91 +1,70 @@
+"""check-partial's fixtures run THE shared runner, checkslib/parts.py, copied
+into a scratch repo the way setup will render it (PLAN-small-tasks §7 step 2),
+behind a dev.sh that hands it CHECK_PARTS. The failing fixture breaks that same
+file with mutants, so the check is shown red on the real runner, not on a
+second runner written for the test."""
+from pathlib import Path
+
+import checkslib
 from checkslib.fixture import Fixture, git_repo
 
+RUNNER = Path(checkslib.__file__).resolve().parent / "parts.py"
+
 DEV = """#!/usr/bin/env bash
-# check [--json] [--resume]: the parts CHECK_PARTS lists (else parts.json), in parts.
-exec python3 "$(dirname "$0")/run_parts.py" "$@"
+# check [--json] [--resume]: the parts CHECK_PARTS lists (else parts.json), through the shared parts.py.
+here="$(cd "$(dirname "$0")" && pwd)"
+[ "${1:-}" = check ] || { echo "usage: ./dev.sh check [--json] [--resume]"; exit 2; }
+shift
+exec python3 "$here/parts.py" run "${CHECK_PARTS:-$here/parts.json}" "$@"
 """
 
-# A working parts runner, spelled out by hand. FAULTS turns one property off:
-#   late     the progress file is written once, at the end (a killed run leaves none)
-#   rerun    --resume runs every part, changed or not
-#   no-limit a part's timeout_s is ignored (a hung part holds the run)
-#   own-file the progress file is always the repo's own, whatever PROGRESS_FILE says
-#   skip     --resume runs no part, changed or not
-#   eager    the progress file names every part as passed before any has run
-RUNNER = '''import hashlib, json, os, signal, subprocess, sys, tempfile
-FAULTS = set(%(faults)r)
-manifest = os.environ.get("CHECK_PARTS") or "parts.json"
-progress = os.environ.get("PROGRESS_FILE") or ".progress/check.json"
-if "own-file" in FAULTS:
-    progress = ".progress/check.json"
-base = os.path.dirname(os.path.abspath(manifest))
-parts = json.load(open(manifest))["parts"]
+OWN_PARTS = '{"parts": [{"name": "dev", "run": "true", "files": ["dev.sh"], "timeout_s": 10}]}\n'
+
+# One property of the real runner turned off each: {name: (exact text in
+# parts.py, what replaces it)}. Each text must be in parts.py exactly once
+# (mutate() refuses otherwise), so a refactor that moves one is loud.
+MUTANTS = {
+    # lost results: the progress file is written only once the run is over
+    "late": ('        self.state["updated"] = now()\n',
+             '        self.state["updated"] = now()\n        if self.state["state"] == "running":\n            return\n'),
+    # names every part as passed before any has run
+    "eager": ("    pf.start(len(parts))\n",
+              "    pf.start(len(parts))\n    pf.state[\"passed_steps\"] = [p[\"name\"] for p in parts]\n    pf.write()\n"),
+    # --resume reruns every part, changed or not
+    "rerun": ('skip = {p["name"] for p in parts if not p["always"] and old.get(p["name"]) == hashes[p["name"]]}',
+              "skip = set()"),
+    # --resume runs no part, changed or not
+    "skip": ('skip = {p["name"] for p in parts if not p["always"] and old.get(p["name"]) == hashes[p["name"]]}',
+             'skip = {p["name"] for p in parts}'),
+    # a skipped part is left out of the report (N of M counts only what ran)
+    "drop-skipped": ('checks.append(entry(name, "ok", part["role"], skipped=True))', "pass"),
+    # a part's timeout_s is ignored: a hung part holds the run
+    "no-limit": ('code = p.wait(timeout=part["timeout_s"])', "code = p.wait()"),
+    # the summary counts a failed part as passed: a wrong N of M
+    "count": ("say(summary(n, len(parts), failed)", "say(summary(n + len(failed), len(parts), failed)"),
+    # the failed list does not name the part
+    "unnamed": ('failed.append(f"{name} ({fails[0]})" if fails[0].startswith(why) else f"{name} ({why}: {fails[0]})")',
+                'failed.append(f"({why})")'),
+    # the progress file is always the repo's own, whatever PROGRESS_FILE says
+    "own-file": ('Progress(os.environ.get("PROGRESS_FILE") or os.path.join(base, ".progress", stem + ".json"), stem)',
+                 'Progress(os.path.join(os.getcwd(), ".progress", "check.json"), stem)'),
+}
 
 
-def digest(part):
-    h = hashlib.sha256()
-    for f in part.get("files", []):
-        try:
-            h.update(open(os.path.join(base, f), "rb").read())
-        except OSError:
-            h.update(b"missing")
-    return h.hexdigest()
+def mutate(names=()):
+    """parts.py's text with each named mutant applied."""
+    text = RUNNER.read_text()
+    for name in sorted(names):
+        old, new = MUTANTS[name]
+        n = text.count(old)
+        if n != 1:
+            raise ValueError(f"mutant {name}: its text is in checkslib/parts.py {n} time(s), wanted 1: re-aim it")
+        text = text.replace(old, new)
+    return text
 
 
-def write(state):
-    os.makedirs(os.path.dirname(os.path.abspath(progress)), exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(progress)))
-    with os.fdopen(fd, "w") as f:
-        json.dump(state, f)
-    os.replace(tmp, progress)
-
-
-old = {}
-if "--resume" in sys.argv:
-    try:
-        old = json.load(open(progress)).get("hashes", {})
-    except (OSError, ValueError):
-        old = {}
-state = {"pid": os.getpid(), "state": "running", "passed_steps": [], "hashes": {}}
-checks = []
-if "eager" in FAULTS:
-    state["passed_steps"] = [p["name"] for p in parts]
-    write(state)
-for part in parts:
-    name, h = part["name"], digest(part)
-    if ("rerun" not in FAULTS and old.get(name) == h) or ("skip" in FAULTS and "--resume" in sys.argv):
-        state["passed_steps"].append(name)
-        state["hashes"][name] = h
-        checks.append({"name": name, "status": "ok", "counts": {"failed": 0}, "failures": []})
-        continue
-    p = subprocess.Popen(part["run"], shell=True, cwd=base, start_new_session=True,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    try:
-        code = p.wait(timeout=None if "no-limit" in FAULTS else part.get("timeout_s", 30))
-        why = "exit %%d" %% code
-    except subprocess.TimeoutExpired:
-        os.killpg(p.pid, signal.SIGKILL)
-        p.wait()
-        code, why = -1, "timeout after %%ss" %% part.get("timeout_s")
-    if code == 0:
-        state["passed_steps"].append(name)
-        state["hashes"][name] = h
-        checks.append({"name": name, "status": "ok", "counts": {"failed": 0}, "failures": []})
-    else:
-        checks.append({"name": name, "status": "fail", "counts": {"failed": 1},
-                       "failures": [{"message": why, "file": None, "line": None, "role": "tests"}]})
-    if "late" not in FAULTS:
-        write(state)
-ok = all(c["status"] == "ok" for c in checks)
-state["state"] = "passed" if ok else "failed"
-write(state)
-print(json.dumps({"ok": ok, "checks": checks}))
-sys.exit(0 if ok else 1)
-'''
-
-
-def repo(t, faults=()):
-    return git_repo(t / "r", {"dev.sh": DEV, "run_parts.py": RUNNER % {"faults": sorted(faults)},
+def repo(t, mutants=()):
+    return git_repo(t / "r", {"dev.sh": DEV, "parts.py": mutate(mutants), "parts.json": OWN_PARTS,
                               ".gitignore": ".progress/\n"})
 
 
@@ -94,8 +73,9 @@ def passing(t):
 
 
 def failing(t):
-    # All three faults at once, so each scenario fails for its own reason;
-    # tests/test_check_partial.py shows each fault alone failing its scenario alone.
+    # The three ways at once (lost results, rerunning unchanged parts, a timeout
+    # ignored), so each scenario fails for its own reason; tests/test_check_partial.py
+    # shows every mutant alone turning only its own scenario red.
     return Fixture(repo(t, ("late", "rerun", "no-limit")), env={"CHECKS_CHECK_PARTIAL_RUN_TIMEOUT": "8"},
                    expect=["killed: a run killed while p2 hung left no progress file",
                            "changed: after an edit to p3's file only, `--resume` ran p1, p2, p3",
