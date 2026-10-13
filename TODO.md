@@ -49,8 +49,10 @@
 - PLAN-architecture §12 (2026-10-13, 47237f5, b5f5dc4): cli.json `store` is
   optional and a `read` block declares read verbs; `cli-declared`
   (roles:lag) and `repro` (all) built, with fixtures and tests/test_repro.py.
-  Not built: repro does not check the fixture tree is unchanged after the
-  runs (a writer that answers the same twice passes); no `checks repro`
+  repro now compares the fixture copy before and after each verb (sha256
+  per path; built 2026-10-13, coordinator's follow-up). Still not compared:
+  a verb with no `read.fixture` runs in the live repo, and other processes
+  write there (the ok line says so). Not built: no `checks repro`
   alias (`checks one repro <repo>`); `checks practices --json` does not
   exist, so lag items come from `checks all --roles lag --json` today.
   Other §12 gates belong elsewhere: `setup plans --facts` (setup), the

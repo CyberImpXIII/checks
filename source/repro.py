@@ -13,7 +13,13 @@
 # JSON, a difference (named at its first path), different exit codes, a run
 # past 60s, and a volatile path that removes nothing in either run (declared,
 # yet it changes nothing). Both runs share one copy, so a read verb that
-# writes its fixture and answers differently the second time is caught.
+# writes its fixture and answers differently the second time is caught; and
+# with a fixture, the copy is compared before and after each verb's two runs
+# (checkslib/repro.py snapshot: every path, contents by sha256), so a verb
+# that writes and still answers the same is a finding too, naming the paths
+# added, removed or changed. Without a fixture the verbs run in the repo
+# itself, which other processes write, so no tree is compared (the ok line
+# says so).
 # cli.json's own rules (`read` names declared verbs, each with `--json`, the
 # fixture a folder in the repo, ...) are `accessor`'s findings; here a
 # cli.json that breaks any is UNCHECKED, as is no cli.json (`cli-declared`
@@ -71,21 +77,27 @@ def main():
         env.update({k: repro.substitute(v, fixture) for k, v in (read.get("env") or {}).items()})
         cli = str(ctx.repo / doc["cli"])
         findings, notes = [], []
+        tree = repro.snapshot(fixture) if fixture else None
         for verb in sorted(read["verbs"]):
             spec = read["verbs"][verb]
             argv = [cli, verb] + [repro.substitute(a, fixture) for a in spec["args"]]
             runs, why = run_twice(argv, cwd, env)
-            if runs is None:
-                findings.append(f"`{verb}`: {why}")
-                continue
-            got = repro.compare(verb, runs, spec.get("volatile", []))
+            got = [f"`{verb}`: {why}"] if runs is None else repro.compare(verb, runs, spec.get("volatile", []))
+            if fixture:
+                after = repro.snapshot(fixture)
+                changed = repro.tree_changes(tree, after)
+                if changed:
+                    shown = ", ".join(changed[:5]) + (f", and {len(changed) - 5} more" if len(changed) > 5 else "")
+                    got.append(f"`{verb}`: a read verb changed its fixture ({len(changed)} path(s)): {shown}")
+                tree = after
             findings += got
             if not got:
                 notes.append(f"{verb} (exit {runs[0][0]})")
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
     if not findings:
-        print(f"the same answer twice: {', '.join(notes)}")
+        kept = "fixture unchanged" if fixture else "no fixture: run in the repo, tree not compared"
+        print(f"the same answer twice: {', '.join(notes)}; {kept}")
     api.done(findings)
 
 

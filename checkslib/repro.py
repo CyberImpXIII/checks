@@ -13,9 +13,16 @@ a declared input that changes nothing is caught, never trusted.
 The comparison is of the re-serialised documents with key order KEPT (no
 sort): an object whose keys come out in a different order is a difference,
 as an unsorted list is. Whitespace is not compared: the same program prints
-the same document the same way."""
+the same document the same way.
+
+A read verb also leaves its fixture as it found it: `snapshot` before and
+after a verb's two runs, `tree_changes` names each path added, removed or
+changed (contents by sha256, so a rewrite with the same bytes is no change)."""
 import copy
+import hashlib
 import json
+import os
+from pathlib import Path
 
 from checkslib import contract
 
@@ -81,6 +88,30 @@ def first_difference(a, b, where="$"):
             return f"{where}: {len(a)} items vs {len(b)}"
         return None
     return None if a == b else f"{where}: {_show(a)} vs {_show(b)}"
+
+
+def snapshot(root):
+    """{relative posix path: what it holds} for every entry under root: a file's
+    sha256, a link's target, a folder's marker (so an added empty folder counts)."""
+    out = {}
+    for dirpath, dirnames, filenames in os.walk(root):
+        base = Path(dirpath)
+        for name in dirnames + filenames:
+            p = base / name
+            rel = p.relative_to(root).as_posix()
+            if p.is_symlink():
+                out[rel] = "link:" + os.readlink(p)
+            elif p.is_dir():
+                out[rel] = "dir"
+            else:
+                out[rel] = "sha256:" + hashlib.sha256(p.read_bytes()).hexdigest()
+    return out
+
+
+def tree_changes(before, after):
+    """`added x`, `removed x`, `changed x` between two snapshots, sorted by path; [] when equal."""
+    return [f"{'added' if p not in before else 'removed' if p not in after else 'changed'} {p}"
+            for p in sorted(set(before) | set(after)) if before.get(p) != after.get(p)]
 
 
 def substitute(text, fixture):

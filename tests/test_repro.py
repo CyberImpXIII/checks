@@ -16,7 +16,7 @@ verb = sys.argv[1] if len(sys.argv) > 1 else "help"
 args = sys.argv[2:]
 if verb == "help":
     print("tool <verb>\\n\\n" + "".join(f"  tool {v}   does {v}\\n" for v in
-          ("count", "stamp", "plain", "tick", "env", "order")))
+          ("count", "stamp", "plain", "tick", "env", "cache", "rewrite", "order")))
 elif verb == "count":
     where = args[args.index("--dir") + 1] if "--dir" in args else os.environ["TOOL_DATA"]
     rows = sorted(open(os.path.join(where, "rows.txt")).read().split())
@@ -34,12 +34,20 @@ elif verb == "tick":
 elif verb == "env":
     leaked = sorted(k for k in ("CHECKS_WORKSPACE", "CHECKS_PARAMS", "CHECKS_ROSTER_NAMES") if k in os.environ)
     print("leaked: " + ",".join(leaked) if leaked else json.dumps({"leaked": []}))
+elif verb == "cache":
+    os.makedirs("cache", exist_ok=True)
+    open(os.path.join("cache", "c.txt"), "w").write("same every time")
+    print(json.dumps({"rows": 3}))
+elif verb == "rewrite":
+    data = open("rows.txt").read()
+    open("rows.txt", "w").write(data)
+    print(json.dumps({"rows": 3}))
 elif verb == "order":
     keys = ["a", "b"] if not os.path.exists("seen") else ["b", "a"]
     open("seen", "w").close()
     print(json.dumps({k: 1 for k in keys}))
 """
-VERBS = ["count", "stamp", "plain", "tick", "env", "order"]
+VERBS = ["count", "stamp", "plain", "tick", "env", "cache", "rewrite", "order"]
 
 
 class Repro(Case):
@@ -59,7 +67,10 @@ class Repro(Case):
 
     def test_a_reproducible_verb_is_ok_and_named(self):
         res = self.one(self.make(self.fx({"count": {"args": ["--json"]}})))
-        self.assertEqual((res["status"], res["lines"]), ("ok", ["the same answer twice: count (exit 0)"]))
+        self.assertEqual((res["status"], res["lines"]),
+                         ("ok", ["the same answer twice: count (exit 0); fixture unchanged"]))
+        res = self.one(self.make({"verbs": {"env": {"args": ["--json"]}}}))
+        self.assertEqual(res["lines"], ["the same answer twice: env (exit 0); no fixture: run in the repo, tree not compared"])
 
     def test_the_volatile_list_turns_the_result(self):
         """The declared input changes the output: without it red, with it green."""
@@ -103,8 +114,18 @@ class Repro(Case):
         res = self.one(r)
         self.assertEqual(res["status"], "fail")
         self.assertEqual(res["lines"], ["`tick`: exit codes differ between runs: 0 vs 1",
-                                        "`tick`: two runs differ after the volatile fields are removed, first at $.ticks: 1 vs 2"])
+                                        "`tick`: two runs differ after the volatile fields are removed, first at $.ticks: 1 vs 2",
+                                        "`tick`: a read verb changed its fixture (1 path(s)): added ticks.txt"])
         self.assertFalse((r / "fx" / "ticks.txt").exists(), "both runs use a scratch copy, never the repo's fixture")
+
+    def test_a_read_verb_that_writes_but_answers_the_same_is_caught_by_the_tree(self):
+        """Counterfactual pair: `cache` answers the same twice yet adds files, so only
+        the tree comparison turns it red; `rewrite` writes the same bytes back: no change."""
+        res = self.one(self.make(self.fx({"cache": {"args": ["--json"]}, "rewrite": {"args": ["--json"]}})))
+        self.assertEqual((res["status"], res["lines"]),
+                         ("fail", ["`cache`: a read verb changed its fixture (2 path(s)): added cache, added cache/c.txt"]))
+        res = self.one(self.make(self.fx({"rewrite": {"args": ["--json"]}})))
+        self.assertEqual(res["status"], "ok", res["lines"])
 
     def test_key_order_is_compared(self):
         res = self.one(self.make(self.fx({"order": {"args": ["--json"]}})))
@@ -187,6 +208,12 @@ class Compare(unittest.TestCase):
         self.assertEqual(repro.first_difference({"a": [1, 2]}, {"a": [1, 3]}), "$.a[1]: 2 vs 3")
         self.assertEqual(repro.first_difference([1], [1, 2]), "$: 1 items vs 2")
         self.assertEqual(repro.first_difference({"a": 1}, {"a": 1.0}), "$.a: 1 vs 1.0")
+
+    def test_tree_changes_names_added_removed_and_changed(self):
+        before = {"a": "sha256:1", "b": "sha256:2", "d": "dir", "l": "link:a"}
+        after = {"a": "sha256:1", "b": "sha256:9", "l": "link:b", "n": "sha256:3"}
+        self.assertEqual(repro.tree_changes(before, after), ["changed b", "removed d", "changed l", "added n"])
+        self.assertEqual(repro.tree_changes(before, dict(before)), [])
 
     def test_compare_finds_every_fault(self):
         got = repro.compare("v", [(0, '{"a": 1}'), (1, '{"a": 2}')], ["gone"])
