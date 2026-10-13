@@ -186,6 +186,34 @@ class CliDeclared(Case):
         res = self.one(r)
         self.assertEqual((res["status"], res["lines"]), ("ok", ["2 verb(s) through `tool`; read verbs: stamp"]))
 
+    def test_the_top_is_declared_by_its_claude_repo(self):
+        """A folder that is not a git repo (the workspace top) with no cli.json
+        of its own reads .claude/cli.json when .claude is a git repo; each
+        condition taken away turns it back to the lag."""
+        top = self.tmp / "top"
+        inner = repo(top / ".claude")
+        write(inner / "tool", TOOL, 0o755)
+        write(inner / "cli.json", json.dumps({"cli": "tool", "verbs": ["count"]}))
+        res = self.one(top)
+        self.assertEqual((res["status"], res["lines"]), ("ok", [
+            "1 verb(s) through `tool`; read verbs: none declared; "
+            "declared in .claude/cli.json (not a git repo: its .claude repo holds it)"]))
+        write(inner / "cli.json", json.dumps({"cli": "tool", "verbs": ["count", "purge"]}))
+        res = self.one(top)
+        self.assertEqual(res["status"], "fail")
+        self.assertIn("lag: .claude/cli.json: verb-implemented:", res["lines"][0])
+        write(inner / "cli.json", json.dumps({"cli": "tool", "verbs": ["count"]}))
+        lag = "lag: no cli.json: this repo declares no CLI and no verbs (PLAN-architecture.md §12.1)"
+        (inner / ".git").rename(inner / "git.off")          # .claude not a git repo
+        self.assertEqual(self.one(top)["lines"], [lag])
+        (inner / "git.off").rename(inner / ".git")
+        (top / ".git").mkdir()                              # the folder is a git repo: its own root decides
+        self.assertEqual(self.one(top)["lines"], [lag])
+        (top / ".git").rmdir()
+        write(top / "tool", TOOL, 0o755)                    # its own cli.json wins over .claude's
+        write(top / "cli.json", json.dumps({"cli": "tool", "verbs": []}))
+        self.assertIn("lag: cli.json: declares no verbs", self.one(top)["lines"][0])
+
     def test_it_runs_only_when_lags_are_asked_for(self):
         r = repo(self.tmp / "r")
         names = lambda *a: {x["check"] for x in self.cli_json("run", r, *a)[1]["results"]}  # noqa: E731

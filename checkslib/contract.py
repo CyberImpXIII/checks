@@ -315,6 +315,20 @@ def schema(name):
     return checkjson.load(schema_path(name))
 
 
+def cli_home(repo):
+    """The folder whose cli.json declares `repo`: the repo itself, or, for a
+    folder that is not a git repo (the workspace top) and has no cli.json of
+    its own, its `.claude/` when that is a git repo holding one: the top's
+    files are committed in its .claude repo, so its CLI is declared there.
+    A git repo always declares its own at its root."""
+    repo = Path(repo)
+    inner = repo / ".claude"
+    if (not (repo / CLI).is_file() and not (repo / ".git").exists()
+            and (inner / ".git").exists() and (inner / CLI).is_file()):
+        return inner
+    return repo
+
+
 def read(repo, name):
     """(doc, findings). doc is None when the file is absent (no findings), or
     when it does not parse or does not fit its schema (the findings say how);

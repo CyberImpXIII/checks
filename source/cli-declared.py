@@ -11,6 +11,10 @@
 # (`checks all --roles lag`), never in a repo's pre-commit, which it would
 # turn red for a requirement its owner has not yet met.
 # On ok it names the verb count and the read verbs (`repro`'s list).
+# The workspace top is not a git repo; its files are committed in its .claude
+# repo, so a folder that is not a git repo, with no cli.json of its own and a
+# .claude/ git repo holding one, is declared by .claude/cli.json
+# (contract.cli_home; the ok line says so).
 # To pass: write cli.json at the repo root: `{"cli": "<your CLI>", "verbs":
 # [...]}` (plus `store` when the CLI is the way into one), every verb one
 # `<cli> help` lists; add `read` for the verbs that only read, so `repro` can
@@ -26,16 +30,20 @@ LAG = "lag:"
 
 def main():
     ctx = api.context()
-    doc, found = contract.read(ctx.repo, contract.CLI)
+    home = contract.cli_home(ctx.repo)
+    where = "" if home == ctx.repo else f"{home.name}/"
+    doc, found = contract.read(home, contract.CLI)
     if doc is None and not found:
         api.done([f"{LAG} no {contract.CLI}: this repo declares no CLI and no verbs "
                   f"(PLAN-architecture.md §12.1)"])
     if found:
-        api.done([f"{LAG} {f}" for f in found])
+        api.done([f"{LAG} {where}{f}" for f in found])
     if not doc["verbs"]:
-        api.done([f"{LAG} {contract.CLI}: declares no verbs (`verbs` is empty): nothing is usable through `{doc['cli']}`"])
+        api.done([f"{LAG} {where}{contract.CLI}: declares no verbs (`verbs` is empty): "
+                  f"nothing is usable through `{doc['cli']}`"])
     reads = sorted((doc.get("read") or {}).get("verbs") or {})
-    print(f"{len(doc['verbs'])} verb(s) through `{doc['cli']}`; read verbs: {', '.join(reads) or 'none declared'}")
+    said = f"; declared in {where}{contract.CLI} (not a git repo: its .claude repo holds it)" if where else ""
+    print(f"{len(doc['verbs'])} verb(s) through `{doc['cli']}`; read verbs: {', '.join(reads) or 'none declared'}{said}")
     api.done()
 
 

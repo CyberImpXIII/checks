@@ -11,8 +11,12 @@ esac
 
 
 def passing(t):
-    return Fixture(git_repo(t / "r", {"tool.sh": TOOL,
-                                      "cli.json": json.dumps({"cli": "tool.sh", "verbs": ["list"]})}))
+    # The workspace top's shape: not a git repo itself, its files committed in
+    # its .claude repo, which holds the cli.json (a plain repo's root cli.json
+    # is tests/test_repro.py CliDeclared's case).
+    top = t / "top"
+    git_repo(top / ".claude", {"tool.sh": TOOL, "cli.json": json.dumps({"cli": "tool.sh", "verbs": ["list"]})})
+    return Fixture(top)
 
 
 def failing(t):

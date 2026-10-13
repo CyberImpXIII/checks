@@ -352,10 +352,13 @@
 
 ## Unconfirmed suspicions
 
-- The workspace top declares its CLI at `.claude/cli.json`, which no check
-  reads (contract.CLI is `<repo>/cli.json`), so `cli-declared` will show the
-  top as a lag it is not. Probe: `./checks one cli-declared ../..`. Decision
-  owed: read `.claude/cli.json` at the top, or the top moves it.
+- Top `.claude/cli.json` (settled for cli-declared 2026-10-13, harness's
+  path): `contract.cli_home` reads it for a non-git folder with no cli.json
+  whose .claude is a git repo; `checks one cli-declared ../..` is OK (15
+  verbs). Only cli-declared uses cli_home: accessor, repro and stores-* at
+  the top still read `<top>/cli.json` (absent: UNCHECKED/ok), as `.claude`
+  is its own row in `checks all` and runs them there. Suspicion, unprobed:
+  that row split is right for them; settle if the top ever gets a store.
 - store-guard (tools/hooks) appears to handle a cli.json with no `store`
   (`else []` near line 162 of store-guard.sh), now that `store` is optional.
   Read, never run. Settle (tools/hooks): a PreToolUse payload against a repo
