@@ -61,7 +61,9 @@ class Schemas(unittest.TestCase):
                 yield from objects(node["items"], f"{where}[]")
         # A map (name -> value) has open keys by nature; each one names the
         # x-rule that holds its keys, so no map is left unchecked.
-        maps = {"cli.json.not_verbs": (contract.CLI, "not-verbs-exact")}
+        maps = {"cli.json.not_verbs": (contract.CLI, "not-verbs-exact"),
+                "cli.json.read.env": (contract.CLI, "read-env"),
+                "cli.json.read.verbs": (contract.CLI, "read-declared")}
         seen = set()
         for name in contract.SCHEMAS:
             for where, node in objects(contract.schema(name), name):
@@ -94,7 +96,13 @@ SERVICES = {"name": "r", "tags": ["t"], "services": [{"service": "check", "run":
                                                      {"service": "write", "run": "store.sh", "verbs": ["add"]}]}
 CLIDOC = {"store": "app.db", "cli": "store.sh", "verbs": ["add", "list"]}
 # The harness's shape (.claude/cli.json): every other command named, with why.
-CLIDOC_ALL = dict(CLIDOC, _comment="prose", not_verbs={"drop": "the store's owner only"})
+CLIDOC_ALL = dict(CLIDOC, _comment="prose", not_verbs={"drop": "the store's owner only"},
+                  read={"fixture": "fx", "env": {"APP_DATA": "{fixture}"},
+                        "verbs": {"list": {"args": ["--json"], "volatile": ["at", "rows.*.seen"]}}})
+
+
+def _read_verb(d, **spec):
+    d["read"]["verbs"]["list"].update(spec)
 NODEDOC = {"rebuild": ["true"], "generated": ["out.txt"], "record": ["*.md"], "children": ["kid"], "registry": "reg.json"}
 VERIFYDOC = {"items": [{"item": "a", "status": "same"}, {"item": "b", "status": "differs", "detail": "line 2"}]}
 
@@ -116,6 +124,12 @@ RULE_MUTANTS = [
     (contract.CLI, "verb-implemented", lambda d: d["verbs"].append("purge"), "does not implement `purge`"),
     (contract.CLI, "unique", lambda d: d.update(store=["app.db", "./app.db"]), "path `app.db` given twice"),
     (contract.CLI, "not-verbs-exact", lambda d: d["not_verbs"].pop("drop"), "`drop` (from `store.sh help`) is in neither"),
+    (contract.CLI, "read-declared", lambda d: d["read"]["verbs"].update(drop={"args": ["--json"]}),
+     "$.read.verbs.drop: `drop` is not a verb $.verbs lists"),
+    (contract.CLI, "read-json", lambda d: _read_verb(d, args=["-q"]), "$.read.verbs.list.args: no `--json`"),
+    (contract.CLI, "read-fixture", lambda d: d["read"].update(fixture="nofx"), "`nofx` is not a folder in the repo"),
+    (contract.CLI, "read-env", lambda d: d["read"]["env"].update(CHECKS_PARAMS="{}"), "`CHECKS_PARAMS` is the checks runner's own"),
+    (contract.CLI, "volatile-paths", lambda d: _read_verb(d, volatile=["at", "rows..seen"]), "`rows..seen` is not dot-separated keys"),
     (contract.NODE, "paths-inside", lambda d: d["generated"].append("../x"), "`../x` is not a path inside"),
     (contract.NODE, "unique", lambda d: d["record"].append("*.md"), "path `*.md` given twice"),
     (contract.NODE, "generated-exact", lambda d: d["generated"].append("gen/*.txt"), "`gen/*.txt` is a glob"),
@@ -130,6 +144,7 @@ class Rules(Case):
         self.r = self.tmp / "r"
         cli(self.r / "dev.sh", "check")
         cli(self.r / "store.sh", "add", "list", "drop")
+        (self.r / "fx").mkdir()
         write(self.r / "plain.txt", "x\n")
         self.clean = {contract.SERVICES: SERVICES, contract.CLI: CLIDOC_ALL, contract.NODE: NODEDOC, contract.VERIFY: VERIFYDOC}
         for name, doc in self.clean.items():
@@ -173,6 +188,50 @@ class Rules(Case):
                                  [f"{name}: not-verbs-exact: $.not_verbs: {want}"], found)
         # without not_verbs, verbs may be a subset of the help: `drop` unnamed is fine
         self.assertEqual(self.read(name, CLIDOC), (CLIDOC, []))
+
+    def test_read_each_way_it_can_be_wrong(self):
+        """The branches the one mutant per rule leaves unshown."""
+        name = contract.CLI
+        no_fx = copy.deepcopy(CLIDOC_ALL)
+        del no_fx["read"]["fixture"]
+        no_fx["read"]["verbs"]["list"]["args"] = ["--json", "--dir", "{fixture}"]
+        cases = {
+            "placeholder without a fixture": (no_fx, "read-fixture", [
+                "$.read.verbs.list.args: uses `{fixture}` but $.read names no fixture",
+                "$.read.env.APP_DATA: uses `{fixture}` but $.read names no fixture"]),
+            "fixture outside": (dict(CLIDOC_ALL, read=dict(CLIDOC_ALL["read"], fixture="../fx")), "read-fixture",
+                                ["$.read.fixture: `../fx` is not a path inside the repo"]),
+            "no verb": (dict(CLIDOC_ALL, read={"verbs": {}}), "read-declared",
+                        ["$.read.verbs: names no verb: a `read` that declares nothing runs nothing"]),
+            "env name": (dict(CLIDOC_ALL, read=dict(CLIDOC_ALL["read"], env={"BAD-NAME": "x"})), "read-env",
+                         ["$.read.env: `BAD-NAME` is not an environment variable name"]),
+            "volatile twice": (dict(CLIDOC_ALL, read=dict(CLIDOC_ALL["read"], verbs={"list": {"args": ["--json"], "volatile": ["at", "at"]}})),
+                               "volatile-paths", ["$.read.verbs.list.volatile: path `at` given twice"]),
+        }
+        for label, (doc, rule, want) in cases.items():
+            with self.subTest(label):
+                _, found = self.read(name, doc)
+                self.assertEqual([f for f in found if f.startswith(f"{name}: {rule}: ")],
+                                 [f"{name}: {rule}: {w}" for w in want], found)
+
+    def test_read_shape_is_held_by_the_schema(self):
+        for read, want in (({"verbs": {"list": {}}}, "$.read.verbs.list: missing `args`"),
+                           ({"verbs": {"list": {"args": ["--json"], "volatle": []}}}, "unknown key `volatle`"),
+                           ({"fixture": "fx"}, "$.read: missing `verbs`"),
+                           ({"verbs": {}, "env": {"A": 1}}, "$.read.env.A: 1 is not string")):
+            with self.subTest(want):
+                got, found = self.read(contract.CLI, dict(CLIDOC_ALL, read=read))
+                self.assertIsNone(got)
+                self.assertIn(want, "\n".join(found))
+
+    def test_store_is_optional_and_cli_is_not(self):
+        """PLAN-architecture.md §12.1: every repo declares its verbs, store or none."""
+        bare = {"cli": "store.sh", "verbs": ["add"]}
+        self.assertEqual(self.read(contract.CLI, bare), (bare, []))
+        got, found = self.read(contract.CLI, {"verbs": ["add"]})
+        self.assertIsNone(got)
+        self.assertIn("$: missing `cli`", "\n".join(found))
+        self.assertEqual(contract.store_files(bare, ["app.db"]), [])
 
     def test_not_verbs_shape_is_held_by_the_schema(self):
         # the counterfactual: the keys added for .claude/cli.json do not open the
@@ -331,6 +390,16 @@ class Accessor(Case):
         res = self.one(top)
         self.assertEqual(res["lines"], ["plain/data/p.db: a store with no cli.json naming its one CLI"])
 
+    def test_a_cli_json_with_no_store_is_ok_until_a_store_appears(self):
+        r = repo(self.tmp / "r", {"x.py": "open('app.db')\n"})
+        cli(r / "store.sh", "add", "list")
+        write(r / "cli.json", json.dumps({"cli": "store.sh", "verbs": ["add"]}))
+        res = self.one(r)
+        self.assertEqual((res["status"], res["lines"]), ("ok", []))
+        write(r / "app.db", "")                                 # the counterfactual: a store it does not name
+        res = self.one(r)
+        self.assertEqual((res["status"], res["lines"]), ("fail", ["app.db: a store cli.json does not name (one gated CLI per store)"]))
+
     def test_a_broken_cli_json_is_red(self):
         r = self.store(cli_doc=dict(CLIDOC, verbs=["add", "purge"]))
         res = self.one(r)
@@ -378,6 +447,13 @@ class StoresReadonly(Case):
 
     def test_nothing_to_judge_is_unchecked_never_ok(self):
         self.assertEqual(self.one(repo(self.tmp / "none"))["status"], "unchecked")
+        r = repo(self.tmp / "nostore")
+        cli(r / "store.sh", "add")
+        write(r / "cli.json", json.dumps({"cli": "store.sh", "verbs": ["add"]}))
+        write(r / "todo.json", "{}\n", 0o644)
+        res = self.one(r)
+        self.assertEqual(res["status"], "unchecked")
+        self.assertIn("declares no `store`", res["lines"][0])
         res = self.one(self.store("missing.json", {}))
         self.assertEqual(res["status"], "unchecked")
         self.assertIn("matches no file", res["lines"][0])

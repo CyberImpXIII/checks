@@ -12,7 +12,8 @@
 # non-zero exit beside a report where every item is `same` (a verify that
 # died mid-way must not read as a pass). Only `unavailable` items left is
 # UNCHECKED, naming them.
-# No cli.json is UNCHECKED (no store declared here); a cli.json with any
+# No cli.json, or one with no `store` (a CLI over no store), is UNCHECKED (no
+# store declared here, so no export); a cli.json with any
 # finding is reported as accessor would, not run. A cli.json that declares no
 # `verify` verb is a finding: nothing shows the export current. DATA_REPO
 # unset is UNCHECKED, never an empty pass: the caller supplies it (from the
@@ -42,6 +43,8 @@ def main():
         api.done(unchecked=f"no {contract.CLI}: no store is declared here, so no export to verify")
     if found:
         api.done(found)
+    if not contract.has_store(doc):
+        api.done(unchecked=f"{contract.CLI} declares no `store` (a CLI over no store): no export to verify")
     if "verify" not in doc["verbs"]:
         api.done([f"{contract.CLI}: declares no `verify` verb: nothing shows the store's export is current"])
     data = os.environ.get(DATA)

@@ -2,15 +2,38 @@
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "cli.schema.json",
  "title": "cli.json",
- "description": "A repo's one gated CLI over its store (PLAN-routing-tree.md §14.8; the skeleton setup installs is `{store, cli, verbs: []}`): the store's file(s), the CLI that is the only way in, and the verbs it offers. `accessor` validates this file against this schema with checkslib/checkjson.py and enforces each `x-rules` id in checkslib/contract.py, then audits that nothing else in the repo names the store. One CLI per repo: a repo with two CLIs over two stores is an open decision (TODO.md).",
+ "description": "A repo's one CLI and the verbs it offers (PLAN-routing-tree.md §14.8; PLAN-architecture.md §12: every repo has one, `cli-declared` reports a repo without it as a `lag` item). With a store, also the store's file(s), for which the CLI is the only way in; the skeleton setup installs is `{store, cli, verbs: []}`. `read` declares which verbs only read, how to call each with `--json`, the fixture they run on and the fields that may differ between two runs; `repro` runs each twice and compares. `accessor` validates this file against this schema with checkslib/checkjson.py and enforces each `x-rules` id in checkslib/contract.py, then audits that nothing else in the repo names the store. One CLI per repo: a repo with two CLIs over two stores is an open decision (TODO.md).",
  "type": "object",
  "additionalProperties": false,
- "required": ["store", "cli", "verbs"],
+ "required": ["cli", "verbs"],
  "properties": {
-  "store": {"type": ["string", "array"], "minLength": 1, "minItems": 1, "items": {"type": "string", "minLength": 1}, "description": "The store: one path, or a list of paths or globs, relative to the repo root. Its file may be git-ignored (a database usually is)."},
-  "cli": {"type": "string", "minLength": 1, "description": "The executable that is the only way into the store, relative to the repo root."},
-  "verbs": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "The verbs the CLI offers; each must be one `<cli> help` lists. Empty in setup's skeleton."},
+  "store": {"type": ["string", "array"], "minLength": 1, "minItems": 1, "items": {"type": "string", "minLength": 1}, "description": "Optional: the store, one path or a list of paths or globs, relative to the repo root. Its file may be git-ignored (a database usually is). Absent: the repo keeps no store, and its CLI still declares its verbs."},
+  "cli": {"type": "string", "minLength": 1, "description": "The executable that is the repo's CLI (with a store, the only way into it), relative to the repo root."},
+  "verbs": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "The verbs the CLI offers; each must be one `<cli> help` lists. Empty in setup's skeleton (`cli-declared` reports an empty list as a lag)."},
   "not_verbs": {"type": "object", "additionalProperties": {"type": "string", "minLength": 1}, "description": "Optional: every other command `<cli> help` lists, each with why a caller may not run it. When present, verbs and not_verbs together are exactly the help's commands (the harness's .claude/cli.json uses it)."},
+  "read": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["verbs"],
+   "description": "Optional: the read verbs, each run as `<cli> <verb> <args...>` by `repro`, twice, on one scratch copy of `fixture`, and compared after the `volatile` fields are removed.",
+   "properties": {
+    "fixture": {"type": "string", "minLength": 1, "description": "A folder inside the repo. `repro` copies it once to a scratch folder, runs every verb there (that copy is the working directory) and puts the copy's absolute path wherever `{fixture}` appears in `args` or `env`. Absent: the verbs run in the repo root, and `{fixture}` may not appear."},
+    "env": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Variables set for every run, over the caller's environment (`{fixture}` substituted): how a CLI is pointed at its fixture store."},
+    "verbs": {
+     "type": "object",
+     "description": "verb -> how to run it. Each verb is one `verbs` lists.",
+     "additionalProperties": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["args"],
+      "properties": {
+       "args": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "The arguments after the verb; they include `--json`."},
+       "volatile": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "Fields that may differ between two runs (a time asked for, a duration), removed before the comparison: dot-separated keys from the document's root, `*` for every key of an object or every item of an array (`items.*.seconds`). Each must remove something from at least one of the two runs."}
+      }
+     }
+    }
+   }
+  },
   "_comment": {"type": "string", "description": "Optional prose for the reader; no check reads it."}
  },
  "x-rules": {
@@ -18,6 +41,11 @@
   "cli-executable": "`cli` exists and is executable",
   "verb-implemented": "every verb is a command `<cli> help` lists (checkslib/helptext.py reads the help)",
   "unique": "no store path twice, no verb twice",
-  "not-verbs-exact": "with not_verbs: no command is in both verbs and not_verbs, and verbs + not_verbs are exactly the commands `<cli> help` lists, both ways"
+  "not-verbs-exact": "with not_verbs: no command is in both verbs and not_verbs, and verbs + not_verbs are exactly the commands `<cli> help` lists, both ways",
+  "read-declared": "with read: it names at least one verb, and every verb it names is one `verbs` lists",
+  "read-json": "with read: every read verb's args include `--json`",
+  "read-fixture": "with read: `fixture`, when given, is a folder inside the repo that exists; `{fixture}` appears in args or env only when `fixture` is given",
+  "read-env": "with read.env: every name is an environment variable name (`[A-Za-z_][A-Za-z0-9_]*`) and none is one the checks runner sets for itself (`CHECKS_*`)",
+  "volatile-paths": "with read: every volatile path is dot-separated non-empty keys, and no path is given twice for one verb"
  }
 }

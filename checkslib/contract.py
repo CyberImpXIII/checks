@@ -11,6 +11,7 @@ call, said in its own explanation."""
 import fnmatch
 import json
 import os
+import re
 from pathlib import Path, PurePosixPath
 
 from checkslib import checkjson, helptext
@@ -67,16 +68,23 @@ def _dupes(items, where, what):
     return out
 
 
-def _stores(doc):
-    s = doc["store"]
+def store_paths(doc):
+    """The store paths cli.json names; [] when it declares no store (a CLI over no store)."""
+    s = doc.get("store")
+    if s is None:
+        return []
     return [s] if isinstance(s, str) else list(s)
+
+
+def has_store(doc):
+    return "store" in doc
 
 
 def store_files(doc, files):
     """The files (repo-relative, from `files`) a valid cli.json's `store` names,
     by path or glob, whatever their extension: the one reading of `store` for
-    every check (accessor, stores-readonly)."""
-    globs = [norm(s) for s in _stores(doc)]
+    every check (accessor, stores-readonly). [] when it declares no store."""
+    globs = [norm(s) for s in store_paths(doc)]
     return sorted({p for p in files if any(fnmatch.fnmatch(p, g) for g in globs)})
 
 
@@ -131,7 +139,7 @@ def _write_declared(doc, repo):
 
 def _cli_inside(doc, repo):
     out = [f"$.cli: `{doc['cli']}` is not a path inside the repo"] if not inside(doc["cli"]) else []
-    return out + [f"$.store: `{s}` is not a path inside the repo" for s in _stores(doc) if not inside(s)]
+    return out + [f"$.store: `{s}` is not a path inside the repo" for s in store_paths(doc) if not inside(s)]
 
 
 def _cli_executable(doc, repo):
@@ -144,7 +152,7 @@ def _cli_verbs(doc, repo):
 
 
 def _cli_unique(doc, repo):
-    return _dupes([norm(s) for s in _stores(doc)], "$.store", "path") + _dupes(doc["verbs"], "$.verbs", "verb")
+    return _dupes([norm(s) for s in store_paths(doc)], "$.store", "path") + _dupes(doc["verbs"], "$.verbs", "verb")
 
 
 def _cli_not_verbs(doc, repo):
@@ -162,6 +170,74 @@ def _cli_not_verbs(doc, repo):
     named = set(doc["verbs"]) | set(doc["not_verbs"])
     out += [f"$.not_verbs: `{v}` is not a command `{rel} help` lists" for v in sorted(doc["not_verbs"]) if v not in have]
     return out + [f"$.not_verbs: `{c}` (from `{rel} help`) is in neither verbs nor not_verbs" for c in sorted(have - named)]
+
+
+# cli.json `read`: the read verbs `repro` runs twice (PLAN-architecture.md §12.2).
+FIXTURE_MARK = "{fixture}"
+ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+RUNNER_ENV_PREFIX = "CHECKS_"
+
+
+def _read_verbs(doc):
+    return (doc.get("read") or {}).get("verbs") or {}
+
+
+def _read_declared(doc, repo):
+    if "read" not in doc:
+        return []
+    verbs = _read_verbs(doc)
+    if not verbs:
+        return ["$.read.verbs: names no verb: a `read` that declares nothing runs nothing"]
+    return [f"$.read.verbs.{v}: `{v}` is not a verb $.verbs lists" for v in verbs if v not in doc["verbs"]]
+
+
+def _read_json(doc, repo):
+    return [f"$.read.verbs.{v}.args: no `--json` (every read verb answers in JSON)"
+            for v, spec in _read_verbs(doc).items() if "--json" not in spec["args"]]
+
+
+def _read_fixture(doc, repo):
+    if "read" not in doc:
+        return []
+    read, out = doc["read"], []
+    fx = read.get("fixture")
+    if fx is not None:
+        if not inside(fx):
+            out.append(f"$.read.fixture: `{fx}` is not a path inside the repo")
+        elif not (Path(repo) / fx).is_dir():
+            out.append(f"$.read.fixture: `{fx}` is not a folder in the repo")
+    else:
+        uses = [f"$.read.verbs.{v}.args" for v, spec in _read_verbs(doc).items()
+                if any(FIXTURE_MARK in a for a in spec["args"])]
+        uses += [f"$.read.env.{k}" for k, val in (read.get("env") or {}).items() if FIXTURE_MARK in val]
+        out += [f"{where}: uses `{FIXTURE_MARK}` but $.read names no fixture" for where in uses]
+    return out
+
+
+def _read_env(doc, repo):
+    out = []
+    for k in (doc.get("read") or {}).get("env") or {}:
+        if not ENV_NAME.match(k):
+            out.append(f"$.read.env: `{k}` is not an environment variable name")
+        elif k.upper().startswith(RUNNER_ENV_PREFIX):
+            out.append(f"$.read.env: `{k}` is the checks runner's own ({RUNNER_ENV_PREFIX}*), never a CLI's")
+    return out
+
+
+def volatile_parts(path):
+    """A volatile path's keys, or None when it is not dot-separated non-empty keys."""
+    parts = path.split(".")
+    return None if any(not p for p in parts) else parts
+
+
+def _volatile_paths(doc, repo):
+    out = []
+    for v, spec in _read_verbs(doc).items():
+        where = f"$.read.verbs.{v}.volatile"
+        vol = spec.get("volatile", [])
+        out += [f"{where}: `{p}` is not dot-separated keys" for p in vol if volatile_parts(p) is None]
+        out += _dupes(vol, where, "path")
+    return out
 
 
 # --- node.json ----------------------------------------------------------------
@@ -213,7 +289,9 @@ RULES = {
     SERVICES: {"one-check": _one_check, "run-inside": _run_inside, "run-executable": _run_executable,
                "verb-implemented": _services_verbs, "unique": _services_unique, "write-declared": _write_declared},
     CLI: {"paths-inside": _cli_inside, "cli-executable": _cli_executable, "verb-implemented": _cli_verbs,
-          "unique": _cli_unique, "not-verbs-exact": _cli_not_verbs},
+          "unique": _cli_unique, "not-verbs-exact": _cli_not_verbs, "read-declared": _read_declared,
+          "read-json": _read_json, "read-fixture": _read_fixture, "read-env": _read_env,
+          "volatile-paths": _volatile_paths},
     NODE: {"paths-inside": _node_inside, "unique": _node_unique, "generated-exact": _generated_exact,
            "disjoint": _disjoint},
 }

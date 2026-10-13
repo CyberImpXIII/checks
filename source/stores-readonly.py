@@ -12,7 +12,7 @@
 #   Mode is a signal, not the seal: `sed -i` and `mv` replace a 0444 file
 #   (the planner's probe, same section). This check proves the mode only.
 # No cli.json is UNCHECKED (no store declared, so none to judge); so is a
-# cli.json that does not keep its contract (`accessor` reports how), a store
+# cli.json with no `store`, a cli.json that does not keep its contract (`accessor` reports how), a store
 # that matches no file, and a repo whose every store is SQLite. Never ok
 # without at least one store judged.
 # To pass: `chmod a-w <store>`, and make the CLI restore that mode after each
@@ -40,7 +40,9 @@ def main():
         api.done(unchecked=f"no {contract.CLI}: no store declared here, so none to judge")
     if found:
         api.done(unchecked=f"{contract.CLI} breaks a rule (`accessor` says which); no store judged: {found[0][:200]}")
-    files = contract.store_files(doc, scan.walk(ctx.repo))
+    if not contract.has_store(doc):
+        api.done(unchecked=f"{contract.CLI} declares no `store` (a CLI over no store): none to judge")
+    files =contract.store_files(doc, scan.walk(ctx.repo))
     if not files:
         api.done(unchecked=f"{contract.CLI}'s store matches no file on disk: no store to judge")
     judged = [p for p in files if not scan.matches(Path(p).name, SQLITE + SQLITE_SIDE)]

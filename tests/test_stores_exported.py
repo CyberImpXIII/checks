@@ -69,6 +69,10 @@ class StoresExported(Case):
         self.assertEqual(res["status"], "unchecked")
         r = self.store(verbs=("export",))
         self.assertEqual(self.one(r)["lines"], ["cli.json: declares no `verify` verb: nothing shows the store's export is current"])
+        write(r / "cli.json", json.dumps({"cli": "store.sh", "verbs": ["export"]}))   # a CLI over no store
+        res = self.one(r)
+        self.assertEqual(res["status"], "unchecked")
+        self.assertIn("declares no `store`", res["lines"][0])
 
     def test_a_report_that_is_not_one_is_red(self):
         cases = [("echo all good", "printed no JSON document (exit 0)"),

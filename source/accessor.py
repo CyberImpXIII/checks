@@ -20,7 +20,10 @@
 #      pruned), minus *.md, .claude/, tests/, test/, the contract files and
 #      checks.json, and the `exclude` param's globs.
 # No store and no cli.json is ok: nothing to gate. A cli.json whose store
-# globs match no file has nothing to look for, so part 3 is UNCHECKED.
+# globs match no file has nothing to look for, so part 3 is UNCHECKED. A
+# cli.json with no `store` (a CLI over no store, PLAN-architecture.md §12.1)
+# is judged on parts 1 and 2 only: a store-shaped file on disk is then a
+# store it does not name, and part 3 has no store to guard (ok, not unchecked).
 # To pass: write cli.json naming the store and its CLI; move the read into the
 # CLI (a verb) and call that; list the CLI's own modules in `impl`; a file that
 # only mentions the name (data, not a read) goes in `exclude`.
@@ -52,11 +55,13 @@ def main():
         if found:
             api.done(found)
         api.done([f"{p}: a store with no {contract.CLI} naming its one CLI" for p in on_disk])
-    stores = [contract.norm(s) for s in ([doc["store"]] if isinstance(doc["store"], str) else doc["store"])]
+    stores = [contract.norm(s) for s in contract.store_paths(doc)]
     declared = contract.store_files(doc, files)
     findings = list(found)
     findings += [f"{p}: a store {contract.CLI} does not name (one gated CLI per store)"
                  for p in on_disk if p not in declared]
+    if not contract.has_store(doc):
+        api.done(findings)              # a CLI over no store: parts 1 and 2 hold, part 3 has no store to guard
     names = sorted({Path(s).name for s in stores if not contract.GLOB & set(s)} | {Path(p).name for p in declared})
     if not names:
         api.done(findings, unchecked=f"{contract.CLI}'s store matches no file: no name to look for around the CLI")
