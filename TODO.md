@@ -126,6 +126,12 @@
   a repo-copy hook whose lib is missing fails open. Reported to hooks
   (2026-10-09, below). Open decision if hooks declines: drop libs from the
   test's expectation (and say libs are unjudged at user scope).
+  2026-10-13: hooks has not answered in 4 days, so the test now pins
+  today's verdict (every hook registered, missing lib/bin files = a fail
+  naming exactly them), then gives those files as repo copies and holds the
+  three settings cases on the hooks alone. The check is unchanged: a repo
+  with no lib copy is still red at user scope. Revisit when hooks gives
+  lib rows (or a `uses=` per hook).
 - hooks-installed reads `source_uncommitted` (done 2026-10-09; hooks
   be71746): an uncovered missing/drift row whose source is mid-edit (true) or
   unknown (null) is UNCHECKED, false is a fail. Held by
@@ -565,6 +571,11 @@ from the top, 14 locations, 12 red.
   rule (td-37: the runner has had --only since 1.1.0, `./dev.sh test <part>`
   here). Settle: in tools/todo, `python3 -m unittest tests.test_handoff.IterateRule`.
 - setup (2026-10-13): checkslib/parts.py is now VERSION 1.3.0 (`usage --json`).
+- setup (2026-10-13, via the dispatcher): the data component's `_cli_shape`
+  (setuplib/core.py) requires `store`, but cli.json's `store` has been
+  optional since 47237f5 (§12.1): `setup tools/checks --only data` says
+  "drift: cli.json has no `store`" for a CLI over no store. Expected: no
+  `store` is `none` ("no store is declared here"), like no cli.json.
 - setup (2026-10-13): checkslib/parts.py is now VERSION 1.2.0 (2430961:
   exit 3 unchecked, FAIL file:line located); every rendered copy drifts
   until `setup <repo> --only parts --rebuild` (reported to the dispatcher).

@@ -142,6 +142,21 @@ class WithHooks(Case):
                            text=True, stdin=subprocess.DEVNULL, timeout=240)
         files = [f["file"] for l in json.loads(p.stdout)["locations"] if l["path"] == "a" for f in l["files"]]
         self.assertTrue(files, "hooks copies expects hooks in a fixture repo")
+        # A support file (.claude/lib/, .claude/bin/) has no user-scope row, so
+        # user scope never covers it: with every hook registered, a missing one
+        # is still a fail naming exactly those (TODO.md: the lib-coverage
+        # decision, reported to hooks 2026-10-09). Held as today's verdict, then
+        # the support files are given as repo copies so the rest is about hooks.
+        support = [f for f in files if not f.startswith(".claude/hooks/")]
+        self.assertTrue(support, "tools/hooks ships no lib/bin file: drop this half")
+        self.shim(ws, proposed)
+        res = self.cli_json("one", "hooks-installed", ws / "a", "--root", ws)[1]["results"][0]
+        self.assertEqual((res["status"], res["lines"]), ("fail", [
+            f"{f}: missing; not covered by user scope (no shared hook of that name there)" for f in support]))
+        for f in support:
+            (ws / "a" / f).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(HOOKS.parent / "source" / f.removeprefix(".claude/"), ws / "a" / f)
+        hooks = [f for f in files if f not in support]
         cases = {"registered": (proposed, "ok"),
                  "unparseable": (write(user / "bad.json", "{not json"), "unchecked"),
                  "registers none": (write(user / "none.json", '{"hooks": {}}\n'), "fail")}
@@ -151,7 +166,8 @@ class WithHooks(Case):
                 res = self.cli_json("one", "hooks-installed", ws / "a", "--root", ws)[1]["results"][0]
                 self.assertEqual(res["status"], want, res["lines"])
                 if want == "ok":
-                    self.assertEqual(res["lines"], ["covered by user scope: " + ", ".join(files)])
+                    self.assertEqual(res["lines"], ["repo copy: " + ", ".join(support),
+                                                    "covered by user scope: " + ", ".join(hooks)])
 
     @unittest.skipUnless(WORKSPACE and (WORKSPACE / "tools" / "checks").is_dir(), WHY)
     def test_real_workspace_agrees_for_this_repo(self):
