@@ -32,7 +32,7 @@ is written once here and never re-implemented in a repo.
 | `docs-rows` | `repos:.` | the top CLAUDE.md tool table has a row per repo and a path per row |
 | `help-matches` | `all` | `dev.sh help` lists exactly the subcommands its `case` implements |
 | `hooks-installed` | `all` | each shared hook runs here: a repo copy that agrees with tools/hooks, or a missing/drifted copy covered by a user-scope registration (both read from `hooks copies --json`; `registered: null` is UNCHECKED; an uncovered missing/drift row whose `source_uncommitted` is true or null -- tools/hooks mid-edit -- is UNCHECKED, false is a fail); on ok it names `repo copy` vs `covered by user scope`; standalone: present, executable, parse |
-| `no-roster` | `tools` | a tool reads no roster: no roster paths, and (given `--names`) no agent names |
+| `no-roster` | `tools` | a tool reads no roster: no roster paths, and (given `--names`) no agent names; the todo store at the repo root (todo.json, todo-history.json: TODO.md's source prose) is skipped like `*.md` |
 | `no-secrets` | `all` | nothing credential-shaped would be committed, read in the working tree AND in the staged copy of every path whose index entry differs from it; `.env` and capture folders are ignored |
 | `regenerate` | `repos:.` | the top regenerates clean: in a fresh clone of what a commit would carry, generated files deleted and node.json's `rebuild` run, zero drift and zero unaccounted files, and no record file touched; no node.json is UNCHECKED |
 | `registry-matches` | `all` | the registry node.json names holds exactly the node's and its children's services.json, row for row, both ways (its `services` object only: roles are the roster's gate); no node.json is UNCHECKED |

@@ -14,7 +14,10 @@
 #      The repo's own folder name is never a finding (a tool may name itself).
 # Scope: the files git would commit (every file outside a git repo), minus *.md, the
 # installed hook copies (.claude/), tests/ and test/ (a test plants faults),
-# and the globs in the `exclude` param (for data that legitimately names a
+# the todo store at the repo root (todo.json, todo-history.json: the prose
+# TODO.md is rendered from, notes and reports that name the roster's files as
+# their subject, written by the todo CLI and not editable by hand; the same
+# file name anywhere else is scanned), and the globs in the `exclude` param (for data that legitimately names a
 # path, such as an install destination). `allow_names` lists agent names this
 # repo may use with another meaning (a sibling folder or package of the same
 # name); the paths half still runs on every file.
@@ -37,11 +40,13 @@ PATHS = [
     re.compile(r"\bdispatches\.jsonl\b"),
     re.compile(r"\.\./+\.claude\b"),
 ]
+# The todo store (tools/todo): prose like TODO.md, rendered into it. Root only.
+TODO_STORE = ["todo.json", "todo-history.json"]
 
 
 def main():
     ctx = api.context()
-    files = scan.in_scope(ctx, ctx.param("exclude", []))
+    files = scan.in_scope(ctx, TODO_STORE + list(ctx.param("exclude", [])))
     names = None
     if ctx.names is not None:
         allowed = {ctx.repo.name, *ctx.param("allow_names", [])}
