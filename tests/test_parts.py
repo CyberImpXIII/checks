@@ -191,11 +191,11 @@ class Parts(Case):
         doc = {"defaults": {"role": "code"}, "parts": [
             part("p1", run="echo 'FAIL: test_one (x)'; echo 'ERROR: test_two'; exit 1"),
             part("p2"),
-            part("p3", run="echo last words; exit 3")]}
+            part("p3", run="echo last words; exit 4")]}
         r = self.run_parts(doc)
         self.assertEqual(r.returncode, 1)
         self.assertEqual(r.stdout.splitlines()[-1],
-                         "check: 1 of 3 passed; failed: p1 (exit 1: FAIL: test_one (x)); p3 (exit 3; last output: last words)")
+                         "check: 1 of 3 passed; failed: p1 (exit 1: FAIL: test_one (x)); p3 (exit 4; last output: last words)")
         self.assertIn("  ERROR: test_two", r.stdout.splitlines())
         r = self.run_parts(doc, "--json")
         self.assertEqual(checkjson.validate(r.stdout, r.returncode), [])
@@ -205,6 +205,43 @@ class Parts(Case):
         self.assertEqual(c[0]["failures"][0]["role"], "code")
         st = self.progress()
         self.assertEqual((st["state"], st["passed_steps"], st["failed_names"]), ("failed", ["p2"], ["p1", "p3"]))
+
+    def test_exit_3_is_unchecked_and_any_other_exit_is_a_fail(self):
+        """The exit code alone turns the status: 3 unchecked (green run), 4 fail (red)."""
+        def doc(code):
+            return {"parts": [part("p1"), part("p2", run=f"echo 'no sibling repo here'; exit {code}")]}
+        r = self.run_parts(doc(3))
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("UNCHK p2 (exit 3, ", r.stdout)
+        self.assertEqual(r.stdout.splitlines()[-1], "check: 1 of 2 passed; unchecked: p2 (no sibling repo here)")
+        st = self.progress()
+        self.assertEqual((st["state"], st["passed_steps"], st["failed_names"], st["step"]), ("passed", ["p1"], [], 2))
+        self.assertNotIn("p2", st["hashes"], "an unchecked part is never kept for --resume")
+        r = self.run_parts(doc(3), "--json")
+        self.assertEqual((r.returncode, checkjson.validate(r.stdout, r.returncode)), (0, []))
+        p2 = json.loads(r.stdout)["checks"][1]
+        self.assertEqual((p2["status"], p2["reason"], p2["failures"]), ("unchecked", "exit 3: no sibling repo here", []))
+        r = self.run_parts(doc(4), "--json")
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual(json.loads(r.stdout)["checks"][1]["status"], "fail")
+        r = self.run_parts(doc(3), "--resume")
+        self.assertIn("re-running 1 of 2: p2", r.stdout.splitlines()[0])
+
+    def test_a_fail_line_naming_a_real_file_fills_file_and_line_else_null(self):
+        (self.base / "src").mkdir()
+        write(self.base / "src" / "x.py", "a\nb\n")
+        lines = ["FAIL src/x.py:2 the second row is wrong",       # a file inside: filled
+                 "ERROR: src/x.py:12: past its end, still the file",
+                 "FAIL src/gone.py:3 not there",                  # no such file: null
+                 "FAIL 2026-10-12T10:30 at a time",               # a time, not a place: null
+                 "FAIL ../outside.py:1 outside the repo",          # outside: null
+                 "FAIL: test_one (tests.x)"]                      # no location: null
+        write(self.base.parent / "outside.py", "x\n")
+        run = "; ".join(f"echo '{l}'" for l in lines) + "; exit 1"
+        r = self.run_parts({"parts": [part("p1", run=run)]}, "--json")
+        self.assertEqual(checkjson.validate(r.stdout, r.returncode), [])
+        got = [(f["file"], f["line"]) for f in json.loads(r.stdout)["checks"][0]["failures"]]
+        self.assertEqual(got, [("src/x.py", 2), ("src/x.py", 12), (None, None), (None, None), (None, None), (None, None)])
 
     def test_each_result_is_on_disk_before_the_next_part_runs(self):
         doc = {"parts": [part("p1"), part("p2", run='cp "$PROGRESS_FILE" seen.json')]}
