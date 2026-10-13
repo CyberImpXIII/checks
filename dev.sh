@@ -19,8 +19,8 @@ usage() {
   cat <<'EOF'
 ./dev.sh <command>
 
-  check      every part of check.parts.json (a part per test module, then fixtures, run, audit), each with its own timeout; ends "check: N of M passed; failed: ..."; non-zero if any fails (--json: schema/check-json.schema.json; --resume: only the parts whose files changed since they passed; CHECK_PARTS=<file>: that file's parts instead)
-  test       the CLI's unit tests, all at once (python3 -m unittest, tests/test_*.py)
+  check      every part of check.parts.json (a part per test module, then fixtures, run, audit), each with its own timeout; ends "check: N of M passed; failed: ..."; non-zero if any fails (--json: schema/check-json.schema.json; --resume: only the parts whose files changed since they passed; --only <part>: just that part; CHECK_PARTS=<file>: that file's parts instead)
+  test       the CLI's unit tests, all at once (python3 -m unittest, tests/test_*.py); `test <part>...`: just those parts of check.parts.json (check --only <part>...), results in the progress file, so a later check --resume skips them while their files are unchanged
   fixtures   every check against its own passing and failing fixture (./checks fixtures)
   run        every check that applies to this repo, on this repo (./checks run .)
   audit      this tool reads no roster (./checks one no-roster .)
@@ -28,14 +28,21 @@ EOF
 }
 
 cmd_check() { exec python3 "$HERE/checkslib/parts.py" run "${CHECK_PARTS:-$HERE/check.parts.json}" "$@"; }
-cmd_test() { python3 -m unittest discover -s tests -t . -p 'test_*.py' 2>&1 | tail -n 25; return "${PIPESTATUS[0]}"; }
+cmd_test() {
+  if [ "$#" -gt 0 ]; then
+    local only=() p
+    for p in "$@"; do only+=(--only "$p"); done
+    cmd_check "${only[@]}"
+  fi
+  python3 -m unittest discover -s tests -t . -p 'test_*.py' 2>&1 | tail -n 25; return "${PIPESTATUS[0]}"
+}
 cmd_fixtures() { ./checks fixtures; }
 cmd_run() { ./checks run . "$@"; }
 cmd_audit() { ./checks one no-roster . "$@"; }
 
 case "${1:-}" in
   check) shift; cmd_check "$@" ;;
-  test) cmd_test ;;
+  test) shift; cmd_test "$@" ;;
   fixtures) cmd_fixtures ;;
   run) shift; cmd_run "$@" ;;
   audit) shift; cmd_audit "$@" ;;

@@ -13,16 +13,25 @@ This file is a versioned, loadable dependency (PLAN-services.md S0.1): the
 standard library only, no import from beside it, so a copy works alone
 (tests/test_parts.py holds that). A repo's dev.sh runs it as a script.
 
-  parts.py run <parts.json> [--resume] [--json]
+  parts.py run <parts.json> [--resume | --only <name>...] [--json]
       Runs the parts in file order, one at a time. Text: one line per part as
       it ends (`ok`, `skip`, `FAIL` with up to 8 of its FAIL/ERROR lines,
       `ERROR` for a timeout), then `check: N of M passed; failed: <name>
       (<why>: <its first FAIL line>); ...`. With --resume the first line is
       `resume: re-running m of M: <names>; ...` or `full run: <why>`.
+      --only <name> (repeatable) runs just the parts named, M being their
+      count: the first line is `only: running m of M: <names>; keeping k ...`,
+      the last ends `; not run: <n> (--only)`, and in --json every other part
+      is `unchecked` (so the document is never a green suite). Its progress
+      file keeps, in passed_steps and hashes, each other part that passed in
+      a resumable progress file and whose hash is unchanged (never an
+      `always` part), listed in `kept`, so a later --resume still skips them.
+      An unknown name, or --only with --resume, is refused.
       --json: stdout is one document in tools/checks/schema/check-json.schema.json,
       one check per part (a timeout `error`, a non-zero exit `fail`, a skipped
-      part `ok` with counts.skipped 1). Exit 0 iff every part passed, 1 if
-      not, 2 when the parts file is refused (with --json, still one document).
+      part `ok` with counts.skipped 1). Exit 0 iff every part run passed, 1 if
+      not, 2 when the parts file or the options are refused (with --json,
+      still one document).
   parts.py validate <parts.json>   each fault on one line, exit 1; or `ok: N parts`
   parts.py files <parts.json> <name>   what that part's hash reads, one line per
       path: `content|shape|except|missing|gone <path>`
@@ -61,7 +70,9 @@ the stem being the parts file's name up to its first dot (check.parts.json:
 check), which is also the `cmd` field. The fields of the shared progress.sh (cmd pid started updated
 step total label passed failed failed_names state last_duration_s
 resumed_from), plus passed_steps (the parts that passed, skipped ones
-included), hashes ({part: its hash when it passed}) and runner (VERSION).
+included), hashes ({part: its hash when it passed}), runner (VERSION), and
+only and kept (the names given to --only and the passes kept from the last
+file; both null on a run without --only).
 Rewritten whole (temp file, then rename) when the run starts, when each part
 starts and when each part ends. The logs are in <progress file>.logs/ (a
 temp folder when that cannot be made; each part's line names its log). The
@@ -85,7 +96,7 @@ import sys
 import tempfile
 import time
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 NAME = re.compile(r"[A-Za-z0-9._-]+\Z")
 PART_KEYS = {"name", "run", "files", "except", "shape", "timeout_s", "role", "always", "_comment"}
 DEFAULT_KEYS = {"files", "except", "shape", "timeout_s", "role", "_comment"}
@@ -361,7 +372,7 @@ class Progress:
         self.state = {"cmd": self.cmd, "pid": os.getpid(), "started": now(), "updated": now(), "step": 0,
                       "total": total, "label": "", "passed": 0, "failed": 0, "failed_names": [],
                       "state": "running", "last_duration_s": self.last_duration(), "resumed_from": None,
-                      "passed_steps": [], "hashes": {}, "runner": VERSION}
+                      "passed_steps": [], "hashes": {}, "runner": VERSION, "only": None, "kept": None}
         self.write()
 
     def label(self, name):
@@ -526,22 +537,55 @@ def refused(args, faults, as_json):
     return 2
 
 
+RUN_USAGE = "run <parts.json> [--resume | --only <name>...] [--json]"
+
+
+def options(rest):
+    """(flags, only names, fault or None) from the words after the parts file."""
+    flags, only, i = set(), [], 0
+    while i < len(rest):
+        a = rest[i]
+        if a in ("--resume", "--json"):
+            flags.add(a)
+        elif a == "--only":
+            if i + 1 >= len(rest) or rest[i + 1].startswith("--"):
+                return flags, only, f"--only needs a part name ({RUN_USAGE})"
+            only.append(rest[i + 1])
+            i += 1
+        else:
+            return flags, only, f"unknown option {a} ({RUN_USAGE})"
+        i += 1
+    if only and "--resume" in flags:
+        return flags, only, "--only and --resume together: --only runs exactly the parts it names"
+    return flags, only, None
+
+
 def cmd_run(args):
     path = args[0]
-    flags = args[1:]
-    bad = [a for a in flags if a not in ("--resume", "--json")]
-    as_json = "--json" in flags
-    if bad:
-        return refused(args, [f"unknown option {bad[0]} (run <parts.json> [--resume] [--json])"], as_json)
+    flags, only, fault = options(args[1:])
+    as_json = "--json" in args[1:]
+    if fault:
+        return refused(args, [fault], as_json)
     try:
         base, parts = load(path)
     except Refused as e:
         return refused(args, list(e.args), as_json)
+    unknown = [n for n in only if n not in {p["name"] for p in parts}]
+    if unknown:
+        return refused(args, [f"--only {n}: no part of that name in {path}" for n in unknown], as_json)
     pf = progress(base, path)
     say = (lambda *_: None) if as_json else (lambda line: print(line, flush=True))
 
     hashes = {p["name"]: part_hash(base, p, pf.ignored) for p in parts}
-    skip, when = set(), None
+    every, skip, when, kept = parts, set(), None, []
+    if only:
+        parts = [p for p in every if p["name"] in only]
+        old, why, when = pf.old(os.getpid())
+        kept = [p["name"] for p in every if p["name"] not in only and not p["always"]
+                and old is not None and old.get(p["name"]) == hashes[p["name"]]]
+        say(f"only: running {len(parts)} of {len(every)}: {shorten([p['name'] for p in parts])}; "
+            + (f"keeping {len(kept)} other part(s) that passed at {when}, their files unchanged" if old is not None
+               else f"keeping none ({why})"))
     if "--resume" in flags:
         old, why, when = pf.old(os.getpid())
         if old is None:
@@ -563,6 +607,10 @@ def cmd_run(args):
     pf.start(len(parts))
     if skip:
         pf.state["resumed_from"] = f"{len(skip)}/{len(parts)} at {when}"
+    if only:
+        pf.state.update(only=[p["name"] for p in parts], kept=kept, passed_steps=list(kept),
+                        hashes={n: hashes[n] for n in kept})
+        pf.write()
     checks, failed, n, stopped, current = [], [], 0, None, None
 
     def restore():
@@ -611,11 +659,16 @@ def cmd_run(args):
         restore()
     all_ok = n == len(parts)
     pf.end("passed" if all_ok else "failed")
+    if only:
+        result = {c["name"]: c for c in checks}
+        checks = [result.get(p["name"]) or entry(p["name"], "unchecked", p["role"],
+                                                 reason="not run: --only named other parts") for p in every]
     if as_json:
         print(json.dumps({"ok": all_ok, "checks": checks}))
     else:
         not_run = sum(c["status"] == "unchecked" for c in checks)
-        say(summary(n, len(parts), failed) + (f"; not run: {not_run}" if not_run else ""))
+        said = "; not run: " + (f"{not_run} (--only)" if only and not stopped else str(not_run))
+        say(summary(n, len(parts), failed) + (said if not_run else ""))
     if stopped is not None:
         return 128 + stopped
     return 0 if all_ok else 1
@@ -652,7 +705,7 @@ def cmd_files(args):
 
 
 USAGE = __doc__.split("\n\n", 3)[3].split("\n\nTHE PARTS FILE", 1)[0]
-COMMANDS = {"run": (cmd_run, 1, 3), "validate": (cmd_validate, 1, 1), "files": (cmd_files, 2, 2),
+COMMANDS = {"run": (cmd_run, 1, 64), "validate": (cmd_validate, 1, 1), "files": (cmd_files, 2, 2),
             "version": (lambda a: print(VERSION) or 0, 0, 0)}
 
 

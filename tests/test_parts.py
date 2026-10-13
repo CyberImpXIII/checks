@@ -306,6 +306,62 @@ class Parts(Case):
         self.run_parts(doc)
         self.assertEqual(resumed({"PARTS_RUNTIME": "another python"})[0], False, "a new runtime reruns everything")
 
+    # ---- --only ------------------------------------------------------------
+
+    def test_only_runs_the_named_part_alone_and_writes_its_result(self):
+        doc = {"parts": [part("p1", run="echo p1 >> ran"), part("p2", run="echo p2 >> ran", files=["b.txt"]),
+                         part("p3", run="echo p3 >> ran; exit 1", files=["b.txt"]),
+                         part("p4", run="echo p4 >> ran", files=[], always="why")]}
+        self.run_parts(doc)
+        (self.base / "ran").unlink()
+        r = self.run_parts(doc, "--only", "p3")
+        self.assertEqual((self.base / "ran").read_text().split(), ["p3"], "only the named part runs")
+        self.assertEqual(r.returncode, 1)
+        out = r.stdout.splitlines()
+        self.assertTrue(out[0].startswith("only: running 1 of 4: p3; keeping 2 other part(s) that passed at "), out)
+        self.assertEqual(out[-1], "check: 0 of 1 passed; failed: p3 (exit 1; no output); not run: 3 (--only)")
+        st = self.progress()
+        self.assertEqual((st["only"], st["kept"], st["total"], st["state"], st["failed_names"]),
+                         (["p3"], ["p1", "p2"], 1, "failed", ["p3"]), "the always part p4 is never kept")
+        self.assertEqual((sorted(st["passed_steps"]), sorted(st["hashes"])), (["p1", "p2"], ["p1", "p2"]))
+        # fixed: --only records the pass, and a later --resume skips all but the always part
+        doc["parts"][2]["run"] = "echo p3 >> ran"
+        (self.base / "ran").unlink()
+        r = self.run_parts(doc, "--only", "p3", "--json")
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(checkjson.validate(r.stdout, r.returncode), [])
+        self.assertEqual([(c["name"], c["status"]) for c in json.loads(r.stdout)["checks"]],
+                         [("p1", "unchecked"), ("p2", "unchecked"), ("p3", "ok"), ("p4", "unchecked")])
+        self.assertEqual(sorted(self.progress()["passed_steps"]), ["p1", "p2", "p3"])
+        (self.base / "ran").unlink()
+        r = self.run_parts(doc, "--resume")
+        self.assertEqual((self.base / "ran").read_text().split(), ["p4"], r.stdout)
+        self.assertEqual(r.stdout.splitlines()[-1], "check: 4 of 4 passed")
+
+    def test_only_keeps_no_pass_whose_files_changed_or_from_an_unresumable_file(self):
+        doc = {"parts": [part("p1"), part("p2", files=["b.txt"]), part("p3")]}
+        self.run_parts(doc)
+        write(self.base / "b.txt", "changed\n")
+        self.run_parts(doc, "--only", "p3")
+        self.assertEqual(self.progress()["kept"], ["p1"], "p2's file changed since it passed")
+        r = self.run_parts(doc, "--only", "p3", env={"PARTS_MAX_AGE": "-1"})
+        self.assertIn("keeping none (progress file expired", r.stdout.splitlines()[0])
+        self.assertEqual(self.progress()["passed_steps"], ["p3"])
+        self.run_parts(doc)
+        self.assertEqual((self.progress()["only"], self.progress()["kept"]), (None, None), "a full run sets neither")
+
+    def test_only_refusals(self):
+        doc = {"parts": [part("p1")]}
+        for flags, said in [(("--only", "nope"), "--only nope: no part of that name"),
+                            (("--only",), "--only needs a part name"),
+                            (("--only", "p1", "--resume"), "--only and --resume together"),
+                            (("--bogus",), "unknown option --bogus")]:
+            r = self.run_parts(doc, *flags)
+            self.assertEqual(r.returncode, 2, flags)
+            self.assertIn(said, r.stderr, flags)
+            r = self.run_parts(doc, *flags, "--json")
+            self.assertEqual((r.returncode, checkjson.validate(r.stdout, r.returncode)), (2, []), flags)
+
     # ---- the file as a dependency -----------------------------------------
 
     def test_usage_lists_every_command_and_version_prints(self):
@@ -347,6 +403,23 @@ class ThisRepo(Case):
                 self.assertEqual(p["run"], f"python3 -m unittest tests.{m}")
                 self.assertIn(f"tests/{m}.py", p["files"])
                 self.assertEqual(p["role"], "code")
+
+    def test_dev_sh_test_with_names_runs_just_those_parts(self):
+        """`./dev.sh test <part>...` (PLAN-small-tasks §3.5) is the runner's --only:
+        handed a three-part suite through CHECK_PARTS, it runs the two named and
+        records them in the progress file."""
+        base = self.tmp / "suite"
+        write(base / "a.txt", "a\n")
+        doc = {"parts": [part(n, run=f"echo {n} >> ran") for n in ("p1", "p2", "p3")]}
+        pf = self.tmp / "progress" / "check.json"
+        env = dict(os.environ, CHECK_PARTS=str(write(base / "parts.json", json.dumps(doc))), PROGRESS_FILE=str(pf))
+        p = subprocess.run([str(TOOL_ROOT / "dev.sh"), "test", "p3", "p1"], capture_output=True, text=True,
+                           env=env, stdin=subprocess.DEVNULL, timeout=120)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertEqual((base / "ran").read_text().split(), ["p1", "p3"])
+        self.assertEqual(p.stdout.splitlines()[-1], "check: 2 of 2 passed; not run: 1 (--only)")
+        st = json.loads(pf.read_text())
+        self.assertEqual((st["only"], st["passed_steps"]), (["p1", "p3"], ["p1", "p3"]))
 
     def test_the_progress_folder_is_ignored_by_git(self):
         p = subprocess.run(["git", "-C", str(TOOL_ROOT), "check-ignore", "-q", ".progress/check.json"])
