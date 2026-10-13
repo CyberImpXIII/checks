@@ -5,10 +5,9 @@ the CLAUDE.md check table and `checks list`. And the roster audit shown to go
 red on a planted read."""
 import json
 import re
-import shutil
 import unittest
 
-from tests.helpers import Case, TOOL_ROOT, run_cli, write
+from tests.helpers import Case, TOOL_ROOT, copy_committable, git, repo, run_cli, write
 from checkslib import api, cli, decl, runner
 
 SOURCE = TOOL_ROOT / "source"
@@ -101,9 +100,7 @@ class RosterAudit(Case):
     and is not red on an unplanted copy (the counterfactual)."""
 
     def copy_tool(self):
-        dst = self.tmp / "tools" / "checks"
-        shutil.copytree(TOOL_ROOT, dst, ignore=shutil.ignore_patterns(".git", "__pycache__"))
-        return dst
+        return copy_committable(TOOL_ROOT, self.tmp / "tools" / "checks")
 
     def audit(self, copy, *names):
         args = ["one", "no-roster", copy] + (["--names", ",".join(names)] if names else [])
@@ -128,6 +125,29 @@ class RosterAudit(Case):
         res = self.audit(copy, "harness")
         self.assertEqual(res["status"], "fail")
         self.assertIn("names roster agent `harness`", res["lines"][0])
+
+
+class CopyCommittable(Case):
+    """The copy a test makes of this tool holds what git would carry and
+    nothing else. Found 2026-10-12: RosterAudit copied the live tree, the last
+    red run's .progress/ logs (ignored, naming `.claude/lib`) came along, and
+    no-roster on the copy went red with no fault in the code."""
+
+    def test_copies_tracked_and_untracked_but_never_ignored(self):
+        src = repo(self.tmp / "r", {".gitignore": ".progress/\n", "a.py": "x\n", "gone.py": "y\n"})
+        write(src / "b.py", "untracked, not ignored\n")
+        write(src / ".progress" / "run.log", "names .claude/lib\n")
+        (src / "gone.py").unlink()
+        dst = copy_committable(src, self.tmp / "copy")
+        got = sorted(p.relative_to(dst).as_posix() for p in dst.rglob("*") if p.is_file())
+        self.assertEqual(got, [".gitignore", "CLAUDE.md", "a.py", "b.py"])
+
+    def test_keeps_the_mode(self):
+        src = repo(self.tmp / "r", {"run.sh": "#!/bin/sh\n"})
+        (src / "run.sh").chmod(0o755)
+        git(src, "add", "-A")
+        dst = copy_committable(src, self.tmp / "copy")
+        self.assertTrue((dst / "run.sh").stat().st_mode & 0o100)
 
 
 if __name__ == "__main__":

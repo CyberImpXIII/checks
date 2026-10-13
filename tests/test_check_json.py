@@ -11,7 +11,7 @@ import time
 import unittest
 from unittest import mock
 
-from tests.helpers import Case, TOOL_ROOT, write
+from tests.helpers import Case, TOOL_ROOT, copy_committable, write
 from checkslib import api, checkjson
 
 SCHEMA = checkjson.load()
@@ -271,7 +271,7 @@ class OwnDevJson(Case):
         its FAIL line, the audit ok, and exits 1. (tests/test_parts.py holds
         the runner's documents green and red on hand-made suites.)"""
         dst = self.tmp / "tools" / "checks"
-        shutil.copytree(TOOL_ROOT, dst, ignore=shutil.ignore_patterns(".git", "__pycache__", ".progress"))
+        copy_committable(TOOL_ROOT, dst)
         shutil.rmtree(dst / "tests")
         write(dst / "tests" / "__init__.py", "")
         write(dst / "tests" / "test_stub.py",

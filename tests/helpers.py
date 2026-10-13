@@ -55,6 +55,25 @@ def repo(path, files=None, commit=True, claude_md=True):
     return path
 
 
+def copy_committable(src, dst):
+    """Copy into dst only the files git would carry from src: tracked and
+    untracked-but-not-ignored (`ls-files --cached --others --exclude-standard`),
+    a tracked file deleted on disk skipped. Never shutil.copytree of the live
+    tree: that also copies ignored state (.progress/ logs from the last run,
+    which name `.claude/lib`), and a scan of the copy then judges files a clone
+    would not have. Held by tests/test_meta.py CopyCommittable."""
+    src, dst = Path(src), Path(dst)
+    out = subprocess.run(["git", "-C", str(src), "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+                         capture_output=True, check=True).stdout.decode()
+    for rel in sorted(set(filter(None, out.split("\0")))):
+        s = src / rel
+        if s.is_symlink() or not s.is_file():
+            continue
+        (dst / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(s, dst / rel)
+    return dst
+
+
 def run_cli(*args, env=None):
     return subprocess.run([sys.executable, str(CLI), *map(str, args)], capture_output=True, text=True,
                           env=dict(os.environ, **(env or {})), stdin=subprocess.DEVNULL)
