@@ -142,21 +142,29 @@ class WithHooks(Case):
                            text=True, stdin=subprocess.DEVNULL, timeout=240)
         files = [f["file"] for l in json.loads(p.stdout)["locations"] if l["path"] == "a" for f in l["files"]]
         self.assertTrue(files, "hooks copies expects hooks in a fixture repo")
-        # A support file (.claude/lib/, .claude/bin/) has no user-scope row, so
-        # user scope never covers it: with every hook registered, a missing one
-        # is still a fail naming exactly those (TODO.md: the lib-coverage
-        # decision, reported to hooks 2026-10-09). Held as today's verdict, then
-        # the support files are given as repo copies so the rest is about hooks.
+        # A support file (.claude/lib/, .claude/bin/) is judged by its
+        # `user_scope.support` row (hooks 6eb9c65): with every hook registered,
+        # a lib each reader finds beside itself is covered; one still read from
+        # the repo copy fails naming the row's `why`. The check follows the row
+        # (generic), and today's split, as hooks stated it, is pinned so a change
+        # on their side shows here. Then the uncovered ones are given as repo
+        # copies so the rest is about the settings.
+        support_rows = {s["file"]: s for s in json.loads(p.stdout)["user_scope"]["support"]}
         support = [f for f in files if not f.startswith(".claude/hooks/")]
         self.assertTrue(support, "tools/hooks ships no lib/bin file: drop this half")
-        self.shim(ws, proposed)
+        self.assertEqual({f: support_rows[f]["covered"] for f in support if f in support_rows},
+                         {".claude/lib/ledger.sh": True, ".claude/lib/extra-stores.sh": True,
+                          ".claude/lib/write-targets.sh": False, ".claude/bin/commit.sh": False},
+                         "hooks' support split changed: settle the pin with tools/hooks")
+        uncovered = [f for f in support if support_rows[f]["covered"] is not True]
         res = self.cli_json("one", "hooks-installed", ws / "a", "--root", ws)[1]["results"][0]
         self.assertEqual((res["status"], res["lines"]), ("fail", [
-            f"{f}: missing; not covered by user scope (no shared hook of that name there)" for f in support]))
-        for f in support:
+            f"{f}: missing; not covered by user scope ({support_rows[f]['why']})" for f in uncovered]))
+        for f in uncovered:
             (ws / "a" / f).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(HOOKS.parent / "source" / f.removeprefix(".claude/"), ws / "a" / f)
-        hooks = [f for f in files if f not in support]
+        hooks = [f for f in files if f not in uncovered]
+        support = uncovered
         cases = {"registered": (proposed, "ok"),
                  "unparseable": (write(user / "bad.json", "{not json"), "unchecked"),
                  "registers none": (write(user / "none.json", '{"hooks": {}}\n'), "fail")}

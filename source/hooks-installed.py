@@ -9,6 +9,10 @@
 #   A copy reported missing or drift is COVERED when the report's `user_scope`
 #   has a `kind: source` row for that file (or for the hook whose test it is)
 #   with `registered: true`: the user settings run that hook from its source.
+#   A support file (a lib or bin copy beside the hooks) is covered by its
+#   `user_scope.support` row: `covered` true (every hook reading it runs in
+#   place, beside the source's copy), false a fail naming the row's `why`
+#   (a repo copy is still read), null UNCHECKED.
 #   Not covered, and red: `registered: false`, no such row, or no user settings
 #   file. Unknown, and UNCHECKED (never ok): `registered: null` or a
 #   `user_scope.error`. A not-executable copy is red whatever user scope says.
@@ -67,6 +71,15 @@ def user_scope(rep):
                 and "registered" in h and is_tristate(h["registered"])
                 and isinstance(h.get("test"), (str, type(None)))):
             broken(f"a `user_scope.hooks` row is not {{file, kind, test?, registered: true|false|null}}: {h!r}")
+    if not isinstance(us.get("support"), list):
+        broken("`user_scope.support` is not a list")
+    for s in us["support"]:
+        if not (isinstance(s, dict) and isinstance(s.get("file"), str) and isinstance(s.get("kind"), str)
+                and isinstance(s.get("needed_by"), list) and all(isinstance(n, str) for n in s["needed_by"])
+                and "covered" in s and is_tristate(s["covered"])
+                and "why" in s and isinstance(s["why"], (str, type(None)))):
+            broken(f"a `user_scope.support` row is not {{file, kind, needed_by: [..], covered: true|false|null, "
+                   f"why: text|null}}: {s!r}")
     return us
 
 
@@ -76,6 +89,14 @@ def coverage(us, f):
         return False, "no user settings file"
     if us["error"] is not None:
         return None, us["error"]
+    support = [s for s in us["support"] if s["file"] == f]
+    if support:     # a lib/bin file: hooks' own verdict, whether user scope makes the repo copy unneeded
+        s = support[0]
+        if s["covered"] is True:
+            return True, ""
+        if s["covered"] is False:
+            return False, s["why"] or "support: covered false"
+        return None, s["why"] or "support: covered null"
     rows = [h for h in us["hooks"] if h["kind"] == "source" and f in (h["file"], h.get("test"))]
     if not rows:
         return False, "no shared hook of that name there"

@@ -113,25 +113,15 @@
   file:line. Per-finding rows would mean parsing unittest's and `checks run
   --json`'s output; not done.
 
-- `./dev.sh check` is RED, ONE cause (2026-10-09): tests/test_contract.py
-  WithHooks.test_hooks_installed_follows_the_real_user_scope_report
-  (settings='registered'). Not a stale expectation: "ok" is the right
-  real-world verdict (every hook registered at user scope runs from
-  tools/hooks/source and sources source/lib/, so a repo's missing lib copy is
-  harmless), but the check cannot reach it: `.claude/lib/ledger.sh` and
-  `write-targets.sh` read "missing; not covered by user scope (no shared hook
-  of that name there)" because `hooks copies --json`'s `user_scope` has no lib
-  rows and no `# hooks:` line links a lib to the hooks that source it.
-  Treating every missing lib as covered (or UNCHECKED) would hide a real fault:
-  a repo-copy hook whose lib is missing fails open. Reported to hooks
-  (2026-10-09, below). Open decision if hooks declines: drop libs from the
-  test's expectation (and say libs are unjudged at user scope).
-  2026-10-13: hooks has not answered in 4 days, so the test now pins
-  today's verdict (every hook registered, missing lib/bin files = a fail
-  naming exactly them), then gives those files as repo copies and holds the
-  three settings cases on the hooks alone. The check is unchanged: a repo
-  with no lib copy is still red at user scope. Revisit when hooks gives
-  lib rows (or a `uses=` per hook).
+- Lib/bin coverage at user scope: SETTLED 2026-10-13 (hooks 6eb9c65 gave
+  `user_scope.support` rows {file, kind, needed_by, covered, why}).
+  hooks-installed judges a lib/bin copy by its row: covered true = covered,
+  false = a fail naming `why`, null = UNCHECKED; `support` absent or a bad
+  row = the contract error. Held by tests/test_hooks_installed.py (4 cases,
+  4 mutants, 5 shape errors), the fixture (w.sh's row flips with
+  `registered`), and test_contract's real-tool test, which pins hooks'
+  split (ledger.sh, extra-stores.sh covered; write-targets.sh,
+  bin/commit.sh not) -- a change on their side turns that pin red, by design.
 - hooks-installed reads `source_uncommitted` (done 2026-10-09; hooks
   be71746): an uncovered missing/drift row whose source is mid-edit (true) or
   unknown (null) is UNCHECKED, false is a fail. Held by
@@ -338,12 +328,6 @@
   services.json skeleton (services-valid OK), .githooks/ (inert,
   core.hooksPath unset), .claude/settings.proposed.json (ignored, not applied:
   settings.json is Jacob's).
-- `./dev.sh check` still red after hooks committed (2026-10-05): the
-  "Own bugs" lib item above, now two libs (`.claude/lib/ledger.sh`,
-  `write-targets.sh`: user scope never covers a lib), in hooks-installed and
-  tests.test_contract.WithHooks (settings='registered'); plus hooks-installed
-  listing every shared hook missing from this repo's .claude/hooks (setup
-  installs copies, or the user-scope proposal is applied). Not a fault here.
 - SHAPES has two copies on purpose (decided 2026-10-05): source/no-secrets.py
   (Python re) and tools/hooks' no-secrets.sh (ERE, with its own \b
   emulation). One data file was rejected: a hook copy must work with nothing

@@ -7,7 +7,8 @@ covered when the user settings register that shared hook in place, as
 `user_scope` reports it: a `kind: source` row whose `file` (or `test`) is the
 copy, with `registered: true`. `false`, no row, or no user settings file:
 not covered (red). `null`, or a `user_scope.error`: unknown, so UNCHECKED and
-never ok. A not-executable copy is never covered. A missing/drifted copy not
+never ok. A lib/bin copy with a `user_scope.support` row takes that row's
+`covered` (false names its `why`). A not-executable copy is never covered. A missing/drifted copy not
 covered is a verdict only when its row's `source_uncommitted` is false: true
 (tools/hooks mid-edit) or null is UNCHECKED. Each case below changes
 only the user-scope input, so the input is shown to change the result; the
@@ -32,9 +33,15 @@ def row(file, registered, kind="source", test=None):
     return r
 
 
-def scope(rows, exists=True, error=None):
+def srow(file, covered, why=None):
+    """A `user_scope.support` row (hooks 6eb9c65): hooks' verdict on whether user
+    scope makes this lib/bin's repo copy unneeded."""
+    return {"file": file, "kind": "source", "needed_by": [A], "covered": covered, "why": why}
+
+
+def scope(rows, exists=True, error=None, support=()):
     return {"settings": "/home/u/.claude/settings.json", "exists": exists, "error": error, "source": "/src",
-            "hooks": rows, "left_per_repo": [], "ok": None}
+            "hooks": rows, "support": list(support), "left_per_repo": [], "ok": None}
 
 
 def report(files, user_scope):
@@ -102,6 +109,31 @@ class HooksInstalled(Case):
     def test_no_user_scope_row_for_the_file_is_not_covered(self):
         res = self.run_with(report([(LIB, "missing")], scope([row(A, True)])))
         self.assertEqual(res["status"], "fail")
+        self.assertEqual(res["lines"], [f"{LIB}: missing; not covered by user scope (no shared hook of that name there)"])
+
+    # -- a lib/bin copy: its `support` row's `covered` (hooks 6eb9c65). The same
+    # copies in each case; only `covered` changes, so it is what turns the result.
+
+    def test_support_covered_true_covers_a_missing_lib(self):
+        res = self.run_with(report([(A, "ok"), (LIB, "missing")], scope([row(A, True)], support=[srow(LIB, True)])))
+        self.assertEqual(res["status"], "ok", res["lines"])
+        self.assertEqual(res["lines"], [f"repo copy: {A}", f"covered by user scope: {LIB}"])
+
+    def test_support_covered_false_fails_with_its_why(self):
+        why = "read from the repo's copy by .claude/hooks/dispatch-guard.sh (sourced_by)"
+        res = self.run_with(report([(A, "ok"), (LIB, "missing")], scope([row(A, True)], support=[srow(LIB, False, why)])))
+        self.assertEqual(res["status"], "fail", res["lines"])
+        self.assertEqual(res["lines"], [f"{LIB}: missing; not covered by user scope ({why})"])
+
+    def test_support_covered_null_is_unchecked_never_ok(self):
+        why = ".claude/hooks/a.sh: registered null"
+        res = self.run_with(report([(A, "ok"), (LIB, "missing")], scope([row(A, True)], support=[srow(LIB, None, why)])))
+        self.assertEqual(res["status"], "unchecked", res["lines"])
+        self.assertIn(f"user scope could not tell ({why}): coverage unknown for {LIB}", res["lines"][0])
+
+    def test_support_row_is_read_for_its_own_file_only(self):
+        # a support row for another lib leaves this one with no row: not covered
+        res = self.run_with(report([(LIB, "missing")], scope([row(A, True)], support=[srow(".claude/lib/x.sh", True)])))
         self.assertEqual(res["lines"], [f"{LIB}: missing; not covered by user scope (no shared hook of that name there)"])
 
     def test_a_plugin_row_does_not_cover_a_copy(self):
@@ -198,6 +230,13 @@ class HooksInstalled(Case):
             "source_uncommitted a string": report([(A, "drift", "yes")], scope([row(A, False)])),
             "non-ok row without source_uncommitted": {**report(DRIFT, scope([row(A, False)])), "locations": [
                 {"path": "r", "files": [{"file": A, "status": "drift"}]}]},
+            "no support": report(DRIFT, {k: v for k, v in scope([row(A, True)]).items() if k != "support"}),
+            "support not a list": report(DRIFT, {**scope([row(A, True)]), "support": {}}),
+            "support covered a string": report(DRIFT, scope([row(A, True)], support=[srow(LIB, "yes")])),
+            "support without why": report(DRIFT, scope([row(A, True)], support=[
+                {k: v for k, v in srow(LIB, True).items() if k != "why"}])),
+            "support needed_by not a list": report(DRIFT, scope([row(A, True)], support=[
+                {**srow(LIB, True), "needed_by": A}])),
         }
         for what, rep in bad.items():
             with self.subTest(case=what):
@@ -243,6 +282,17 @@ class HooksInstalled(Case):
                                                  report([(A, "drift", None)], scope([row(A, False)])), "unchecked"),
             "source flag judges committed too": ("elif dirty is not False:", "elif True:",
                                                  report([(A, "drift", False)], scope([row(A, False)])), "fail"),
+            "support rows ignored": ("    if support:", "    if False:",
+                                     report([(LIB, "missing")], scope([], support=[srow(LIB, True)])), "ok"),
+            "support false counted as covered": ('if s["covered"] is True:', 'if s["covered"] is not None:',
+                                                 report([(LIB, "missing")], scope([], support=[srow(LIB, False, "w")])),
+                                                 "fail"),
+            "support null counted as covered": ('if s["covered"] is True:', 'if s["covered"] is not False:',
+                                                report([(LIB, "missing")], scope([], support=[srow(LIB, None, "w")])),
+                                                "unchecked"),
+            "support false read as unknown": ('if s["covered"] is False:', "if False:",
+                                              report([(LIB, "missing")], scope([], support=[srow(LIB, False, "w")])),
+                                              "fail"),
         }
         text = CHECK.read_text()
         for what, (old, new, rep, real) in mutants.items():
