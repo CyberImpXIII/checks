@@ -410,6 +410,47 @@ class Parts(Case):
         self.assertEqual(p.returncode, 2)
         self.assertIn("parts.py run <parts.json>", p.stderr)
 
+    def test_usage_json_is_what_run_accepts(self):
+        """`usage --json` is the consumers' interface (tools/todo's IterateRule
+        reads it): every option it lists, run accepts, with its value; an
+        exclusive pair is refused together; a word it does not list is refused;
+        the help text's run line is the one built from the same table."""
+        p = subprocess.run([sys.executable, str(PARTS), "usage", "--json"], capture_output=True, text=True)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        doc = json.loads(p.stdout)
+        self.assertEqual((doc["version"], doc["commands"]), (parts.VERSION, sorted(parts.COMMANDS)))
+        run = doc["run"]
+        self.assertEqual([o["flag"] for o in run["options"]], ["--resume", "--only", "--json"])
+        self.assertIn(f"  {run['usage']}\n", parts.__doc__, "the docstring's run line is the built one")
+        self.assertEqual(run["usage"], "parts.py run <parts.json> [--resume | --only <name>...] [--json]")
+        for o in run["options"]:
+            words = [o["flag"]] + (["a"] if o["value"] else [])
+            with self.subTest(flag=o["flag"]):
+                self.assertIsNone(parts.options(words * (2 if o["repeatable"] else 1))[2])
+                if o["value"]:
+                    self.assertIsNotNone(parts.options([o["flag"]])[2], "a valued flag needs its value")
+        for a, b in run["exclusive"]:
+            words = [w for f in (a, b) for w in ([f] + (["a"] if parts.RUN_OPTIONS[f] else []))]
+            self.assertIsNotNone(parts.options(words)[2], (a, b))
+        self.assertIn("unknown option --quick", parts.options(["--quick"])[2])
+        p = subprocess.run([sys.executable, str(PARTS), "usage"], capture_output=True, text=True)
+        self.assertEqual((p.returncode, p.stdout.strip()), (0, parts.USAGE.strip()))
+        p = subprocess.run([sys.executable, str(PARTS), "usage", "--bogus"], capture_output=True, text=True)
+        self.assertEqual(p.returncode, 2)
+
+    def test_usage_json_follows_the_table(self):
+        """Counterfactual: a flag added to the table appears in the usage line
+        and the document and is accepted, so neither is a hand-kept copy."""
+        saved = dict(parts.RUN_OPTIONS)
+        try:
+            parts.RUN_OPTIONS["--quick"] = None
+            self.assertTrue(parts.run_usage().endswith("[--json] [--quick]"), parts.run_usage())
+            self.assertIn("--quick", [o["flag"] for o in parts.usage_doc()["run"]["options"]])
+            self.assertIsNone(parts.options(["--quick"])[2])
+        finally:
+            parts.RUN_OPTIONS.clear()
+            parts.RUN_OPTIONS.update(saved)
+
     def test_it_loads_only_the_standard_library(self):
         tree = ast.parse(PARTS.read_text())
         mods = {a.name.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}

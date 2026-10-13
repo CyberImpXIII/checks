@@ -9,7 +9,7 @@ is written once here and never re-implemented in a repo.
 | doing this | use |
 |---|---|
 | before committing | `./dev.sh check` (the parts in `check.parts.json`: a part per test module, every check's fixtures, this repo's own checks, the roster audit); after a red run, `./dev.sh test <part>` re-runs just that part while you fix it (the runner's `--only`), then `./dev.sh check --resume` re-runs only the parts whose files changed or that failed |
-| run a suite in parts (each its own timeout, results saved as they end, resume, "N of M passed") | `checkslib/parts.py` -- the ONE shared runner (PLAN-small-tasks §7), standard library only, `VERSION` in its hash; its header is the parts-file format; `tests/test_parts.py` holds it, check-partial's fixtures run it (with mutants) |
+| run a suite in parts (each its own timeout, results saved as they end, resume, "N of M passed") | `checkslib/parts.py` -- the ONE shared runner (PLAN-small-tasks §7), standard library only, `VERSION` in its hash; its header is the parts-file format; a consumer reads its options from `parts.py usage --json`, never the help text; `tests/test_parts.py` holds it, check-partial's fixtures run it (with mutants) |
 | run the gates on a repo | `./checks run [PATH]` (exit 1 on any fail or error) |
 | run them everywhere | `./checks all [ROOT] --names <roster names>` -- a repo-by-check grid, then every red cell's findings |
 | what a check proves, how to pass it | `./checks explain <name>` |

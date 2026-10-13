@@ -46,6 +46,17 @@
   now behind until setup re-renders (`tools/setup/setup <repo> --only parts
   --rebuild`); the dispatcher queues those. Not gated: no check-partial
   mutant for the two new behaviours (test_parts holds them).
+- parts.py 1.3.0 (2026-10-13): `parts.py usage [--json]`, run's options as
+  data (RUN_OPTIONS/RUN_REPEATABLE/RUN_EXCLUSIVE build the usage line, the
+  argument check and the JSON; test_parts holds them equal, with a
+  counterfactual). Why: tools/todo's IterateRule scraped the help line with a
+  regex for `[--flag]` groups only, so `[--resume | --only <name>...]` (1.1.0,
+  5bce6b6, not 1.2.0) parsed to None. The text was always going to change:
+  td-37 itself says IterateRule turns red once the runner gains --only.
+  Consumers read `usage --json`, `run.options[].flag`, never the text.
+  `./dev.sh check` at this change: "20 of 22 passed; failed: test.contract;
+  run" -- the same hook-copy cause as the item above, now 8 rows (ledger.sh,
+  test-store-guard.sh added). Rendered copies drift until setup re-renders.
 - PLAN-architecture §12 (2026-10-13, 47237f5, b5f5dc4): cli.json `store` is
   optional and a `read` block declares read verbs; `cli-declared`
   (roles:lag) and `repro` (all) built, with fixtures and tests/test_repro.py.
@@ -545,6 +556,12 @@ from the top, 14 locations, 12 red.
   harness's `.claude/lib/suite-parts.sh` is a second runner that could be
   replaced by it (same parts-file keys, same progress fields). Not sent
   directly: this session has no SendMessage.
+- todo (2026-10-13, via the dispatcher): IterateRule's None is a scrape of
+  the help text, not a runner fault; read `python3 <runner> usage --json`
+  -> `run.options[].flag` (`--only` takes a value), then reword the iterate
+  rule (td-37: the runner has had --only since 1.1.0, `./dev.sh test <part>`
+  here). Settle: in tools/todo, `python3 -m unittest tests.test_handoff.IterateRule`.
+- setup (2026-10-13): checkslib/parts.py is now VERSION 1.3.0 (`usage --json`).
 - setup (2026-10-13): checkslib/parts.py is now VERSION 1.2.0 (2430961:
   exit 3 unchecked, FAIL file:line located); every rendered copy drifts
   until `setup <repo> --only parts --rebuild` (reported to the dispatcher).
