@@ -68,11 +68,43 @@ class StoresExported(Case):
         res = self.one(repo(self.tmp / "plain"))
         self.assertEqual(res["status"], "unchecked")
         r = self.store(verbs=("export",))
-        self.assertEqual(self.one(r)["lines"], ["cli.json: declares no `verify` verb: nothing shows the store's export is current"])
+        self.assertEqual(self.one(r)["lines"], ["cli.json: declares no `verify` verb: nothing shows the store's export is current"
+                                                " (entries: data/app.db; a private one goes in `not_exported` with why)"])
         write(r / "cli.json", json.dumps({"cli": "store.sh", "verbs": ["export"]}))   # a CLI over no store
         res = self.one(r)
         self.assertEqual(res["status"], "unchecked")
         self.assertIn("declares no `store`", res["lines"][0])
+
+    def test_not_exported_turns_the_result_and_only_for_the_entries_it_names(self):
+        """The opt-out is the input that changes the output: a store with no verify
+        verb is red; its one entry marked private (with why) is ok and says so; a
+        second, exported entry still needs verify; a key naming no entry is accessor's
+        rule, reported here as a finding, not skipped."""
+        r = self.store(verbs=("export",))
+        doc = {"store": "data/app.db", "cli": "store.sh", "verbs": ["export"]}
+        self.assertEqual(self.one(r)["status"], "fail")
+        write(r / "cli.json", json.dumps(dict(doc, not_exported={"data/app.db": "answer values, gitignored"})))
+        res = self.one(r)
+        self.assertEqual((res["status"], res["lines"]), ("ok", [
+            "every store entry is private (not_exported), so no export to verify: `data/app.db`: answer values, gitignored"]))
+        write(r / "cli.json", json.dumps(dict(doc, store=["data/app.db", "rows.json"],
+                                              not_exported={"data/app.db": "answer values"})))
+        res = self.one(r)
+        self.assertEqual(res["status"], "fail")
+        self.assertIn("declares no `verify` verb", res["lines"][0])
+        self.assertIn("(entries: rows.json;", res["lines"][0])
+        write(r / "cli.json", json.dumps(dict(doc, not_exported={"data/other.db": "x"})))
+        res = self.one(r)
+        self.assertEqual(res["status"], "fail")
+        self.assertIn("not-exported-declared: $.not_exported: `data/other.db` is not an entry of $.store", res["lines"][0])
+
+    def test_a_private_entry_beside_a_verified_one_is_named_on_ok(self):
+        r = self.store()
+        self.cli_export(r)
+        write(r / "cli.json", json.dumps({"store": ["data/app.db", "data/p/*.json"], "cli": "store.sh",
+                                          "verbs": ["export", "verify"], "not_exported": {"data/p/*.json": "private"}}))
+        res = self.one(r)
+        self.assertEqual((res["status"], res["lines"]), ("ok", ["1 item(s) same; private, not verified: `data/p/*.json`: private"]))
 
     def test_a_report_that_is_not_one_is_red(self):
         cases = [("echo all good", "printed no JSON document (exit 0)"),

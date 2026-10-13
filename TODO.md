@@ -57,6 +57,16 @@
   exist, so lag items come from `checks all --roles lag --json` today.
   Other §12 gates belong elsewhere: `setup plans --facts` (setup), the
   transcripts detector (transcripts).
+- cli.json `not_exported` (2026-10-13, asked by applications): a per-entry
+  opt-out from stores-exported, each with why; rule `not-exported-declared`
+  holds its keys to `store` entries. stores-readonly ignores it on purpose:
+  whether applications' packets/batches (0600, answer values) go 0444 is
+  Jacob's call, still open. applications stays red in stores-exported until
+  it lists its private entries (and job-urls.json/audit-exempt.tsv still
+  need a `verify`, or an opt-out, its owner's choice). unverified: other
+  readers of cli.json (hooks store-guard, setup's skeleton) tolerate the new
+  key -- settle: tools/hooks' store-guard test with a cli.json carrying
+  `not_exported`.
 - no-roster skips the root todo store (2026-10-13, 1e51b7a; asked by
   context-hygiene): its local `exclude` of todo.json/todo-history.json is now
   redundant (theirs to drop). Its hooks-installed red the same day was stale

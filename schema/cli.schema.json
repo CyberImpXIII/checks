@@ -11,6 +11,7 @@
   "cli": {"type": "string", "minLength": 1, "description": "The executable that is the repo's CLI (with a store, the only way into it), relative to the repo root."},
   "verbs": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "The verbs the CLI offers; each must be one `<cli> help` lists. Empty in setup's skeleton (`cli-declared` reports an empty list as a lag)."},
   "not_verbs": {"type": "object", "additionalProperties": {"type": "string", "minLength": 1}, "description": "Optional: every other command `<cli> help` lists, each with why a caller may not run it. When present, verbs and not_verbs together are exactly the help's commands (the harness's .claude/cli.json uses it)."},
+  "not_exported": {"type": "object", "additionalProperties": {"type": "string", "minLength": 1}, "description": "Optional: store entries (each written exactly as in `store`) that are private and never exported to the data repo, each with why (it holds answer values, it is a local cache...). `stores-exported` does not ask `verify` to cover them; a store with every entry here needs no `verify` verb. Read-only mode (`stores-readonly`) still applies to them."},
   "read": {
    "type": "object",
    "additionalProperties": false,
@@ -41,6 +42,7 @@
   "cli-executable": "`cli` exists and is executable",
   "verb-implemented": "every verb is a command `<cli> help` lists (checkslib/helptext.py reads the help)",
   "unique": "no store path twice, no verb twice",
+  "not-exported-declared": "with not_exported: every key is an entry of `store`, written as it is there (so a store renamed or removed leaves no stale opt-out)",
   "not-verbs-exact": "with not_verbs: no command is in both verbs and not_verbs, and verbs + not_verbs are exactly the commands `<cli> help` lists, both ways",
   "read-declared": "with read: it names at least one verb, and every verb it names is one `verbs` lists",
   "read-json": "with read: every read verb's args include `--json`",

@@ -80,6 +80,13 @@ def has_store(doc):
     return "store" in doc
 
 
+def exported_stores(doc):
+    """The store entries the data repo should hold: every `store` entry not in
+    `not_exported` (private, with a reason). [] when every entry is private."""
+    private = {norm(k) for k in doc.get("not_exported") or {}}
+    return [s for s in store_paths(doc) if norm(s) not in private]
+
+
 def store_files(doc, files):
     """The files (repo-relative, from `files`) a valid cli.json's `store` names,
     by path or glob, whatever their extension: the one reading of `store` for
@@ -153,6 +160,12 @@ def _cli_verbs(doc, repo):
 
 def _cli_unique(doc, repo):
     return _dupes([norm(s) for s in store_paths(doc)], "$.store", "path") + _dupes(doc["verbs"], "$.verbs", "verb")
+
+
+def _not_exported(doc, repo):
+    entries = {norm(s) for s in store_paths(doc)}
+    return [f"$.not_exported: `{k}` is not an entry of $.store" + ("" if entries else " (no store is declared)")
+            for k in sorted(doc.get("not_exported") or {}) if norm(k) not in entries]
 
 
 def _cli_not_verbs(doc, repo):
@@ -289,7 +302,8 @@ RULES = {
     SERVICES: {"one-check": _one_check, "run-inside": _run_inside, "run-executable": _run_executable,
                "verb-implemented": _services_verbs, "unique": _services_unique, "write-declared": _write_declared},
     CLI: {"paths-inside": _cli_inside, "cli-executable": _cli_executable, "verb-implemented": _cli_verbs,
-          "unique": _cli_unique, "not-verbs-exact": _cli_not_verbs, "read-declared": _read_declared,
+          "unique": _cli_unique, "not-verbs-exact": _cli_not_verbs, "not-exported-declared": _not_exported,
+          "read-declared": _read_declared,
           "read-json": _read_json, "read-fixture": _read_fixture, "read-env": _read_env,
           "volatile-paths": _volatile_paths},
     NODE: {"paths-inside": _node_inside, "unique": _node_unique, "generated-exact": _generated_exact,

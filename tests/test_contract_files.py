@@ -62,6 +62,7 @@ class Schemas(unittest.TestCase):
         # A map (name -> value) has open keys by nature; each one names the
         # x-rule that holds its keys, so no map is left unchecked.
         maps = {"cli.json.not_verbs": (contract.CLI, "not-verbs-exact"),
+                "cli.json.not_exported": (contract.CLI, "not-exported-declared"),
                 "cli.json.read.env": (contract.CLI, "read-env"),
                 "cli.json.read.verbs": (contract.CLI, "read-declared")}
         seen = set()
@@ -97,6 +98,7 @@ SERVICES = {"name": "r", "tags": ["t"], "services": [{"service": "check", "run":
 CLIDOC = {"store": "app.db", "cli": "store.sh", "verbs": ["add", "list"]}
 # The harness's shape (.claude/cli.json): every other command named, with why.
 CLIDOC_ALL = dict(CLIDOC, _comment="prose", not_verbs={"drop": "the store's owner only"},
+                  not_exported={"./app.db": "private: never exported"},
                   read={"fixture": "fx", "env": {"APP_DATA": "{fixture}"},
                         "verbs": {"list": {"args": ["--json"], "volatile": ["at", "rows.*.seen"]}}})
 
@@ -124,6 +126,8 @@ RULE_MUTANTS = [
     (contract.CLI, "verb-implemented", lambda d: d["verbs"].append("purge"), "does not implement `purge`"),
     (contract.CLI, "unique", lambda d: d.update(store=["app.db", "./app.db"]), "path `app.db` given twice"),
     (contract.CLI, "not-verbs-exact", lambda d: d["not_verbs"].pop("drop"), "`drop` (from `store.sh help`) is in neither"),
+    (contract.CLI, "not-exported-declared", lambda d: d["not_exported"].update({"gone.db": "x"}),
+     "$.not_exported: `gone.db` is not an entry of $.store"),
     (contract.CLI, "read-declared", lambda d: d["read"]["verbs"].update(drop={"args": ["--json"]}),
      "$.read.verbs.drop: `drop` is not a verb $.verbs lists"),
     (contract.CLI, "read-json", lambda d: _read_verb(d, args=["-q"]), "$.read.verbs.list.args: no `--json`"),

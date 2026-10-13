@@ -14,15 +14,22 @@
 # UNCHECKED, naming them.
 # No cli.json, or one with no `store` (a CLI over no store), is UNCHECKED (no
 # store declared here, so no export); a cli.json with any
-# finding is reported as accessor would, not run. A cli.json that declares no
-# `verify` verb is a finding: nothing shows the export current. DATA_REPO
+# finding is reported as accessor would, not run. A store entry listed in
+# cli.json's `not_exported` (with why: private, never exported) is not asked
+# of `verify`; when every entry is listed there the check is ok without a
+# `verify` verb, and says which entries and why (the rule
+# `not-exported-declared` holds each key to an entry of `store`). Otherwise
+# a cli.json that declares no `verify` verb is a finding: nothing shows the
+# export current. `stores-readonly` is unaffected by `not_exported`. DATA_REPO
 # unset is UNCHECKED, never an empty pass: the caller supplies it (from the
 # instance's .claude/local.env), as roster names arrive via `--names`; this
 # tool reads no instance file. Set but not a folder is a finding. The verify
 # gets 240s; one that does not finish is an error.
 # To pass: `differs`/`missing`: run the store's `export` (the write service
 # runs it after every sanctioned write) and commit the data repo's change;
-# add `verify` to the CLI, its help and cli.json's verbs, printing the report.
+# add `verify` to the CLI, its help and cli.json's verbs, printing the report;
+# or, for a store entry that is private and never exported, list it in
+# cli.json's `not_exported` with why.
 import json
 import os
 import sys
@@ -45,8 +52,15 @@ def main():
         api.done(found)
     if not contract.has_store(doc):
         api.done(unchecked=f"{contract.CLI} declares no `store` (a CLI over no store): no export to verify")
+    private = doc.get("not_exported") or {}
+    said = "; ".join(f"`{k}`: {why}" for k, why in sorted(private.items()))
+    if not contract.exported_stores(doc):
+        print(f"every store entry is private (not_exported), so no export to verify: {said}")
+        api.done([])
     if "verify" not in doc["verbs"]:
-        api.done([f"{contract.CLI}: declares no `verify` verb: nothing shows the store's export is current"])
+        api.done([f"{contract.CLI}: declares no `verify` verb: nothing shows the store's export is current"
+                  f" (entries: {', '.join(contract.exported_stores(doc))}; a private one goes in `not_exported`"
+                  f" with why)"])
     data = os.environ.get(DATA)
     if not data:
         api.done(unchecked=f"{DATA} is not set: no data repo to verify the export against "
@@ -80,6 +94,8 @@ def main():
         api.done(findings)
     if away:
         api.done(unchecked=f"{len(away)} item(s) could not be compared here: {', '.join(away[:5])}")
+    if private:
+        print(f"{len(items)} item(s) same; private, not verified: {said}")
     api.done([])
 
 
