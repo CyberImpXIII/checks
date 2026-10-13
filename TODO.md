@@ -555,11 +555,12 @@ from the top, 14 locations, 12 red.
   rule (td-37: the runner has had --only since 1.1.0, `./dev.sh test <part>`
   here). Settle: in tools/todo, `python3 -m unittest tests.test_handoff.IterateRule`.
 - setup (2026-10-13): checkslib/parts.py is now VERSION 1.3.0 (`usage --json`).
-- setup (2026-10-13, via the dispatcher): the data component's `_cli_shape`
-  (setuplib/core.py) requires `store`, but cli.json's `store` has been
-  optional since 47237f5 (§12.1): `setup tools/checks --only data` says
-  "drift: cli.json has no `store`" for a CLI over no store. Expected: no
-  `store` is `none` ("no store is declared here"), like no cli.json.
+- setup (2026-10-13): this repo's `.claude/hooks/store-guard.sh` and its
+  test drift from hooks bdd932f (committed: `renders`), so hooks-installed is
+  red here (`./dev.sh check` 21 of 22, `run` alone). setup 677cd20 re-renders
+  them only with `setup tools/checks --only hooks --rebuild` (dry run 2026-10-13:
+  drift, kept; also "settings.json lacks 3 registration(s)"): a drift overwrite
+  waits on Jacob (§7.12), so not run here.
 - setup (2026-10-13): checkslib/parts.py is now VERSION 1.2.0 (2430961:
   exit 3 unchecked, FAIL file:line located); every rendered copy drifts
   until `setup <repo> --only parts --rebuild` (reported to the dispatcher).
