@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-from checkslib import api, decl, runner, selftest
+from checkslib import api, decl, runner, selftest, writers
 
 USAGE = """checks <command>   the generic pre-commit gates, one source, run per repo or from the top
 
@@ -17,6 +17,9 @@ USAGE = """checks <command>   the generic pre-commit gates, one source, run per 
   checks all [ROOT] [--json]         every repo under ROOT, one process each: a repo-by-check
                                      grid, then the findings of every red cell
   checks fixtures [--json]           every check against its passing and failing fixture
+  checks writers [PATH] [--json]     every write site in PATH's code (default .), file:line, its
+                                     primitive and what it does at mode 0444 (RESEARCH-writers.md
+                                     Q4); a scan to read at each line, not a verdict; exit 0
 
   --root DIR         the workspace top (default: two up, when this tool sits in tools/;
                      else none, and checks that need one say UNCHECKED)
@@ -166,8 +169,25 @@ def cmd_fixtures(a):
     return 1 if bad else 0
 
 
+def cmd_writers(a):
+    path = Path(a.path or ".")
+    if not path.is_dir():
+        print(f"checks: no such folder: {path}", file=sys.stderr)
+        return 2
+    ctx = api.Ctx(path, None, {}, None)
+    sites = writers.scan_repo(ctx)
+    if a.json:
+        print(json.dumps({"repo": str(ctx.repo), "counts": writers.counts(sites), "sites": sites}, indent=1))
+        return 0
+    for s in sites:
+        print(f"  {s['file']}:{s['line']}  {s['primitive']}  {s['kind']} ({s['at_0444']} at 0444)  {s['code'][:100]}")
+    said = ", ".join(f"{n} {k}" for k, n in writers.counts(sites).items()) or "none"
+    print(f"checks writers {ctx.repo}: {len(sites)} write site(s): {said}")
+    return 0
+
+
 COMMANDS = {"list": cmd_list, "explain": cmd_explain, "run": cmd_run, "one": cmd_one,
-            "all": cmd_all, "fixtures": cmd_fixtures}
+            "all": cmd_all, "fixtures": cmd_fixtures, "writers": cmd_writers}
 
 
 def main(argv):
@@ -184,6 +204,8 @@ def main(argv):
         p.add_argument("name")
     if argv[0] == "one":
         p.add_argument("name")
+    if argv[0] == "writers":
+        p.add_argument("path", nargs="?")
     if argv[0] in ("run", "one", "all"):
         p.add_argument("path", nargs="?")
         p.add_argument("--root")

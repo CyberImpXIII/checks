@@ -1,6 +1,6 @@
 {
-  "_comment": "This repo's CLI and verbs (PLAN-architecture.md §12.1); it keeps no store. `list` is the one read verb: `run`/`all`/`one`/`fixtures` run checks (repro among them), so they are not declared here.",
+  "_comment": "This repo's CLI and verbs (PLAN-architecture.md §12.1); it keeps no store. `list` and `writers` are the read verbs: `run`/`all`/`one`/`fixtures` run checks (repro among them), so they are not declared here.",
   "cli": "checks",
-  "verbs": ["list", "explain", "run", "one", "all", "fixtures"],
-  "read": {"verbs": {"list": {"args": ["--json"]}}}
+  "verbs": ["list", "explain", "run", "one", "all", "fixtures", "writers"],
+  "read": {"verbs": {"list": {"args": ["--json"]}, "writers": {"args": ["--json"]}}}
 }
