@@ -8,6 +8,7 @@
   {"name": "test.contract_files", "run": "python3 -m unittest tests.test_contract_files", "files": ["tests/test_contract_files.py"], "except": ["tests/", "TODO.md"]},
   {"name": "test.runner", "run": "python3 -m unittest tests.test_runner", "files": ["tests/test_runner.py"], "except": ["tests/", "TODO.md"]},
   {"name": "test.settings_tracked", "run": "python3 -m unittest tests.test_settings_tracked", "files": ["tests/test_settings_tracked.py"], "except": ["tests/", "TODO.md"]},
+  {"name": "test.repro", "run": "python3 -m unittest tests.test_repro", "files": ["tests/test_repro.py"], "except": ["tests/", "TODO.md"]},
   {"name": "test.stores_exported", "run": "python3 -m unittest tests.test_stores_exported", "files": ["tests/test_stores_exported.py"], "except": ["tests/", "TODO.md"]},
   {"name": "test.todo_valid", "run": "python3 -m unittest tests.test_todo_valid", "files": ["tests/test_todo_valid.py"], "except": ["tests/", "TODO.md"]},
   {"name": "test.tree_clean", "run": "python3 -m unittest tests.test_tree_clean", "files": ["tests/test_tree_clean.py"], "except": ["tests/", "TODO.md"]},
