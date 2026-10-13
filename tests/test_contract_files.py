@@ -63,6 +63,7 @@ class Schemas(unittest.TestCase):
         # x-rule that holds its keys, so no map is left unchecked.
         maps = {"cli.json.not_verbs": (contract.CLI, "not-verbs-exact"),
                 "cli.json.not_exported": (contract.CLI, "not-exported-declared"),
+                "cli.json.renders": (contract.CLI, "renders-declared"),
                 "cli.json.read.env": (contract.CLI, "read-env"),
                 "cli.json.read.verbs": (contract.CLI, "read-declared")}
         seen = set()
@@ -99,6 +100,7 @@ CLIDOC = {"store": "app.db", "cli": "store.sh", "verbs": ["add", "list"]}
 # The harness's shape (.claude/cli.json): every other command named, with why.
 CLIDOC_ALL = dict(CLIDOC, _comment="prose", not_verbs={"drop": "the store's owner only"},
                   not_exported={"./app.db": "private: never exported"},
+                  renders={"TODO.md": "list", "out/*.txt": "list"},
                   read={"fixture": "fx", "env": {"APP_DATA": "{fixture}"},
                         "verbs": {"list": {"args": ["--json"], "volatile": ["at", "rows.*.seen"]}}})
 
@@ -128,6 +130,10 @@ RULE_MUTANTS = [
     (contract.CLI, "not-verbs-exact", lambda d: d["not_verbs"].pop("drop"), "`drop` (from `store.sh help`) is in neither"),
     (contract.CLI, "not-exported-declared", lambda d: d["not_exported"].update({"gone.db": "x"}),
      "$.not_exported: `gone.db` is not an entry of $.store"),
+    (contract.CLI, "renders-declared", lambda d: d["renders"].update({"TODO.md": "render"}),
+     "$.renders.TODO.md: `render` is not a verb $.verbs lists"),
+    (contract.CLI, "renders-declared", lambda d: d["renders"].update({"../up.md": "list"}),
+     "$.renders: `../up.md` is not a path inside the repo"),
     (contract.CLI, "read-declared", lambda d: d["read"]["verbs"].update(drop={"args": ["--json"]}),
      "$.read.verbs.drop: `drop` is not a verb $.verbs lists"),
     (contract.CLI, "read-json", lambda d: _read_verb(d, args=["-q"]), "$.read.verbs.list.args: no `--json`"),
@@ -178,6 +184,17 @@ class Rules(Case):
                     _, found = self.read(name, doc)
                 self.assertFalse([f for f in found if want in f], found)
                 write(self.r / name, json.dumps(self.clean[name]))
+
+    def test_renders_is_the_object_store_guard_reads(self):
+        """tools/hooks' store-guard reads `renders` as {path: verb} (hooks
+        6eb9c65) and skips any other shape, letting every write pass: the
+        schema takes hooks' own example and refuses a list or an empty verb."""
+        cli = contract.schema(contract.CLI)
+        ok = {"cli": "g.sh", "verbs": ["render"], "renders": {"TODO.md": "render"}}
+        self.assertEqual(checkjson.structure(ok, cli), [])
+        for bad in (["TODO.md"], {"TODO.md": ""}, {"TODO.md": ["render"]}):
+            with self.subTest(renders=bad):
+                self.assertTrue(checkjson.structure(dict(ok, renders=bad), cli))
 
     def test_not_verbs_each_way_it_can_be_wrong(self):
         name = contract.CLI

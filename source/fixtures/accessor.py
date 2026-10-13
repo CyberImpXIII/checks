@@ -15,7 +15,10 @@ CALLER = "#!/usr/bin/env bash\n./store.sh list   # the store's name is not here:
 def _repo(t, with_cli):
     files = {"store.sh": STORE, "report.sh": CALLER, ".gitignore": "data/\n"}
     if with_cli:
-        files["cli.json"] = json.dumps({"store": "data/app.db", "cli": "store.sh", "verbs": ["add", "list"]})
+        # `renders` in store-guard's shape (path -> verb): accessor accepts it;
+        # a wrong one is test_contract_files' renders-declared mutant.
+        files["cli.json"] = json.dumps({"store": "data/app.db", "cli": "store.sh", "verbs": ["add", "list"],
+                                        "renders": {"rows.txt": "list"}})
     r = git_repo(t / "r", files)
     write(r / "data" / "app.db", "")                 # the store: ignored by git, still found on disk
     return r

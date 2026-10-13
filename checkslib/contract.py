@@ -168,6 +168,18 @@ def _not_exported(doc, repo):
             for k in sorted(doc.get("not_exported") or {}) if norm(k) not in entries]
 
 
+def _renders(doc, repo):
+    """`renders` (path or glob -> verb), the object store-guard reads: each
+    path inside the repo, each verb one the CLI declares."""
+    out = []
+    for path, verb in sorted((doc.get("renders") or {}).items()):
+        if not inside(path):
+            out.append(f"$.renders: `{path}` is not a path inside the repo")
+        if verb not in doc["verbs"]:
+            out.append(f"$.renders.{path}: `{verb}` is not a verb $.verbs lists")
+    return out
+
+
 def _cli_not_verbs(doc, repo):
     """Without not_verbs, verbs may be a subset of the help. With it, the two
     together claim to account for every command: held both ways."""
@@ -303,7 +315,7 @@ RULES = {
                "verb-implemented": _services_verbs, "unique": _services_unique, "write-declared": _write_declared},
     CLI: {"paths-inside": _cli_inside, "cli-executable": _cli_executable, "verb-implemented": _cli_verbs,
           "unique": _cli_unique, "not-verbs-exact": _cli_not_verbs, "not-exported-declared": _not_exported,
-          "read-declared": _read_declared,
+          "renders-declared": _renders, "read-declared": _read_declared,
           "read-json": _read_json, "read-fixture": _read_fixture, "read-env": _read_env,
           "volatile-paths": _volatile_paths},
     NODE: {"paths-inside": _node_inside, "unique": _node_unique, "generated-exact": _generated_exact,
