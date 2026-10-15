@@ -84,6 +84,28 @@
   copies, not hooks mid-edit: all six sources (git-funnel, commit.sh,
   prefer-recipes, write-targets and tests) committed in hooks addf8fc/ea7735b;
   a setup re-render clears it.
+- `todo-store` (2026-10-15, PLAN-architecture §11 S1, approved 2026-10-12):
+  roles:lag, not `all`, because §11 files S1 under "migration lag" and a
+  pre-commit `all` would turn 16 of 19 repos red, this one included (its
+  import is still blocked, below). The `todo check` reading moved to
+  checkslib/todocheck.py, shared with todo-valid. Held by
+  tests/test_todo_valid.py (both checks, every broken contract) and
+  test_contract WithTodo (real `todo init`/hand edit). Live probe the same
+  day (`checks one todo-store <repo>`): ok income, tools/todo,
+  tools/context-hygiene; lag tools/checks, tools/hooks, applications; the
+  top RED on `todo check: render -: TODO.md is hand-written, never rendered`
+  (so the top's todo-valid, applies_to=all, is red too; reported to the
+  dispatcher). Not built: the S0 detector that files each lag as a todo item
+  (harness/todo); `checks practices` does not exist, so lags are read from
+  `checks all --roles lag --json`.
+  `./dev.sh check` at this change (one run): "20 of 22 passed; failed:
+  test.contract; run", neither from it. `run` = hooks-installed: drift on
+  .claude/lib/ledger.sh, hooks/store-guard.sh and its test (setup's
+  re-render, as before). test.contract = WithHooks user-scope pin: hooks'
+  support row for lib/ledger.sh now says `covered: null`, pinned `True`
+  (tools/hooks HEAD 10a40ba, clean tree): a change on hooks' side, the pin
+  is red by design; reported to hooks (unverified: why). WithTodo (both
+  real-tool tests) passed in that part.
 - `checks writers` + `silent-writes` (2026-10-13, 691cbf2; RESEARCH-writers.md
   could-not-settle 1): a line scan, not a parser. Blind spots, in
   checkslib/writers.py's header: a failure handled on a later line (hence
@@ -400,6 +422,15 @@
 
 
 ## Reported to other owners
+
+- dispatcher (2026-10-15, todo-store probe): the top's todo.json exists but
+  `todo check` FAILs render ("TODO.md is hand-written, never rendered"), so
+  the top is red in todo-store and in todo-valid. Settle: `tools/checks/checks
+  one todo-valid .` from the top.
+- hooks (2026-10-15, unverified): `user_scope.support` row for lib/ledger.sh
+  gives `covered: null` (was true); test_contract's pin is red. Settle:
+  `python3 -m unittest tests.test_contract.WithHooks.test_hooks_installed_follows_the_real_user_scope_report`
+  in tools/checks.
 
 - hooks (2026-10-09, W17 run): `hooks copies` and `hooks userscope` refuse the
   whole source ("FAIL lib/extra-stores.sh: no test ... source is not

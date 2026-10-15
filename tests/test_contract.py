@@ -220,6 +220,32 @@ class WithTodo(Case):
         self.assertEqual(res["status"], "fail", res["lines"])
         self.assertTrue(any(l.startswith("todo check: render ") for l in res["lines"]), res["lines"])
 
+    def test_todo_store_follows_the_real_todo_init_and_check(self):
+        """todo-store: no store is the lag; the real `todo init` clears it
+        (ok, naming the real summary line); a hand edit turns it red again."""
+        ws = self.tmp / "ws"
+        write(ws / "CLAUDE.md", "# top\n")
+        os.makedirs(ws / "tools", exist_ok=True)
+        os.symlink(TODO.parent, ws / "tools" / "todo")
+        r = repo(ws / "r")
+        one = lambda: self.cli_json("one", "todo-store", r, "--root", ws)[1]["results"][0]  # noqa: E731
+        res = one()
+        self.assertEqual(res["status"], "fail", res["lines"])
+        self.assertTrue(res["lines"][0].startswith("lag: no todo.json:"), res["lines"])
+        todo = lambda *a: subprocess.run([str(TODO), "-C", str(r), "--root", str(ws), *a], capture_output=True,
+                                         text=True, stdin=subprocess.DEVNULL, timeout=120)
+        self.assertEqual(todo("init", "--prefix", "tx").returncode, 0)
+        self.assertEqual(todo("add", "--kind", "note", "a note").returncode, 0)
+        res = one()
+        self.assertEqual(res["status"], "ok", res["lines"])
+        self.assertTrue(res["lines"][0].startswith("todo check "), res["lines"])
+        md = r / "TODO.md"
+        os.chmod(md, 0o644)
+        md.write_text(md.read_text() + "\n- a hand-added line\n")
+        res = one()
+        self.assertEqual(res["status"], "fail", res["lines"])
+        self.assertTrue(any(l.startswith("lag: todo check: render ") for l in res["lines"]), res["lines"])
+
 
 if __name__ == "__main__":
     unittest.main()
