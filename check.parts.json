@@ -11,6 +11,7 @@
   {"name": "test.repro", "run": "python3 -m unittest tests.test_repro", "files": ["tests/test_repro.py"], "except": ["tests/", "TODO.md"]},
   {"name": "test.writers", "run": "python3 -m unittest tests.test_writers", "files": ["tests/test_writers.py"], "except": ["tests/", "TODO.md"]},
   {"name": "test.stores_exported", "run": "python3 -m unittest tests.test_stores_exported", "files": ["tests/test_stores_exported.py"], "except": ["tests/", "TODO.md"]},
+  {"name": "test.stores_classified", "run": "python3 -m unittest tests.test_stores_classified", "files": ["tests/test_stores_classified.py"], "except": ["tests/", "TODO.md"]},
   {"name": "test.todo_valid", "run": "python3 -m unittest tests.test_todo_valid", "files": ["tests/test_todo_valid.py"], "except": ["tests/", "TODO.md"]},
   {"name": "test.tree_clean", "run": "python3 -m unittest tests.test_tree_clean", "files": ["tests/test_tree_clean.py"], "except": ["tests/", "TODO.md"]},
   {"name": "test.hooks_installed", "run": "python3 -m unittest tests.test_hooks_installed", "files": ["tests/test_hooks_installed.py"], "except": ["tests/", "TODO.md"]},

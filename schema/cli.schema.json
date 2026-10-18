@@ -13,6 +13,23 @@
   "not_verbs": {"type": "object", "additionalProperties": {"type": "string", "minLength": 1}, "description": "Optional: every other command `<cli> help` lists, each with why a caller may not run it. When present, verbs and not_verbs together are exactly the help's commands (the harness's .claude/cli.json uses it)."},
   "not_exported": {"type": "object", "additionalProperties": {"type": "string", "minLength": 1}, "description": "Optional: store entries (each written exactly as in `store`) that are private and never exported to the data repo, each with why (it holds answer values, it is a local cache...). `stores-exported` does not ask `verify` to cover them; a store with every entry here needs no `verify` verb. Read-only mode (`stores-readonly`) still applies to them."},
   "renders": {"type": "object", "additionalProperties": {"type": "string", "minLength": 1}, "description": "Optional: the files the CLI generates, each a path or glob relative to the repo root -> the verb that regenerates it (`{\"TODO.md\": \"render\"}`). tools/hooks' store-guard reads this object and refuses a hand edit or shell write to a listed file, naming `<cli> <verb>`; a `renders` of any other shape it skips, and every write passes."},
+  "kinds": {
+   "type": "object",
+   "description": "Optional: each store's kind (PLAN-services.md §3 \"Every store is static or dynamic\", ST5), keyed by a `store` entry or a `renders` key written exactly as there. `dynamic`: a service's records, one SQLite file behind the CLI, with its `schema_version` (the PRAGMA user_version its CLI migrates it to) and its `export` verb. `static`: the output of a process, written whole, 0444, with a header naming its `producer`, and either `regen` (an argv, its program a path inside the repo, that renders it again byte for byte) or `immutable: true` (never rewritten). `stores-classified` reads it, and `checks stores` reports it over the workspace; a store with no entry here is reported with no kind.",
+   "additionalProperties": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["kind"],
+    "properties": {
+     "kind": {"type": "string", "enum": ["dynamic", "static"]},
+     "schema_version": {"type": "integer", "minimum": 0, "description": "dynamic: the PRAGMA user_version the CLI's migrations bring the file to."},
+     "export": {"type": "string", "minLength": 1, "description": "dynamic: the verb (one `verbs` lists) that writes its static export."},
+     "producer": {"type": "string", "minLength": 1, "description": "static: the command that writes it (`todo render`); its header names it."},
+     "regen": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}, "description": "static, regenerable: the argv, run at the root of a scratch copy of the repo, that writes it again; its program is a path inside the repo, run from the copy."},
+     "immutable": {"type": "boolean", "enum": [true], "description": "static: never rewritten once written (a run's result, a report)."}
+    }
+   }
+  },
   "read": {
    "type": "object",
    "additionalProperties": false,
@@ -45,7 +62,8 @@
   "unique": "no store path twice, no verb twice",
   "not-exported-declared": "with not_exported: every key is an entry of `store`, written as it is there (so a store renamed or removed leaves no stale opt-out)",
   "renders-declared": "with renders: every key is a path or glob inside the repo (not absolute, no `..`), and every value is a verb `verbs` lists",
-  "not-verbs-exact": "with not_verbs: no command is in both verbs and not_verbs, and verbs + not_verbs are exactly the commands `<cli> help` lists, both ways",
+  "kinds-declared": "with kinds: every key is an entry of `store` or a key of `renders`, written as it is there; a dynamic entry names `schema_version` and `export` (a verb `verbs` lists) and none of producer/regen/immutable; a static entry names `producer` and exactly one of `regen` (its program a path inside the repo) or `immutable`, and neither schema_version nor export",
+  "not-verbs-exact":"with not_verbs: no command is in both verbs and not_verbs, and verbs + not_verbs are exactly the commands `<cli> help` lists, both ways",
   "read-declared": "with read: it names at least one verb, and every verb it names is one `verbs` lists",
   "read-json": "with read: every read verb's args include `--json`",
   "read-fixture": "with read: `fixture`, when given, is a folder inside the repo that exists; `{fixture}` appears in args or env only when `fixture` is given",

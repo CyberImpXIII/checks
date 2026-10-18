@@ -222,6 +222,26 @@
 
 ## Open decisions
 
+- stores-classified (tl-269, 2026-10-18, PLAN-services.md §4 step 10.3):
+  built as `roles:lag` with `checks stores` as the workspace report. First
+  report (`./checks stores`): 26 stores in 7 of 20 locations, 0 dynamic,
+  0 static, 26 with no kind, 0 undeclared SQLite files; every finding is "no
+  kind", since no repo has `kinds` yet. Becoming a gate is flipping
+  `applies_to` to `all` once owners declare kinds (step 10.4); hinges on
+  each owner's `kinds`. Not judged, and said in checkslib/stores.py's
+  header: a JSON/TSV file a CLI writes that cli.json does not name; that an
+  `immutable` store was never rewritten; that a static header names its
+  inputs; a regen that writes outside its scratch copy.
+- `~/...` store paths (tools/usage's cli.json, all six entries): contract's
+  `paths-inside` accepts them as a folder named `~` inside the repo
+  (PurePosixPath, no expansion), so accessor/stores-readonly/stores-classified
+  look for `<repo>/~/...` and never find it. `checks stores` now notes the
+  row as not judged instead of claiming the file is missing. Options: refuse
+  a leading `~` in paths-inside (turns tools/usage's accessor red pre-commit,
+  so it needs usage's agreement first), or add a declared out-of-repo store
+  form to the schema. Hinges on whether a store may live outside its repo
+  (PLAN-services.md says a service's records are one file behind its CLI).
+
 - todo td-25 (relayed 2026-10-09; context-hygiene hit the same wall): the
   services.schema.json enum allows only `check` and `write`, so read verbs
   (todo get/find/refs) cannot be declared. Recommendation: add a `read`
@@ -422,6 +442,16 @@
 
 
 ## Reported to other owners
+
+- usage (2026-10-18, tl-269): unverified: its cli.json's `~/.claude/usage/*`
+  store entries are read by every check as `<repo>/~/...` (never expanded),
+  so its store is never judged -- settle: `tools/checks/checks stores
+  /Users/Specter/Desktop/claudeTest | grep usage` (each row "no file on disk;
+  a `~` path"). The decision is in Open decisions above.
+- hooks (2026-10-18, tl-269): unverified: store-guard ignores the new
+  `kinds` key in cli.json (it reads `store`/`cli`/`verbs`/`renders` by jq
+  path) -- settle: from tools/hooks, run its store-guard test with a cli.json
+  that carries a `kinds` object.
 
 - dispatcher (2026-10-15, todo-store probe): the top's todo.json exists but
   `todo check` FAILs render ("TODO.md is hand-written, never rendered"), so

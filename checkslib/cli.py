@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-from checkslib import api, decl, runner, selftest, writers
+from checkslib import api, decl, runner, selftest, stores, writers
 
 USAGE = """checks <command>   the generic pre-commit gates, one source, run per repo or from the top
 
@@ -20,6 +20,9 @@ USAGE = """checks <command>   the generic pre-commit gates, one source, run per 
   checks writers [PATH] [--json]     every write site in PATH's code (default .), file:line, its
                                      primitive and what it does at mode 0444 (RESEARCH-writers.md
                                      Q4); a scan to read at each line, not a verdict; exit 0
+  checks stores [ROOT] [--json]      every store in every repo under ROOT (default: the workspace top)
+                                     with its kind or none, and what stores-classified finds there,
+                                     regen aside (PLAN-services.md ST5, the inventory); a report: exit 0
 
   --root DIR         the workspace top (default: two up, when this tool sits in tools/;
                      else none, and checks that need one say UNCHECKED)
@@ -186,8 +189,45 @@ def cmd_writers(a):
     return 0
 
 
+def cmd_stores(a):
+    """The inventory (PLAN-services.md §4 step 10.3): stores-classified's own
+    reading (checkslib/stores.py) of every repo `checks all` walks, in this
+    process, regen not run. Each repo's status is the check's, regen aside."""
+    ws = Path(a.path).resolve() if a.path else _ws(a)
+    if ws is None or not ws.is_dir():
+        print("checks stores: no workspace top (this tool is not in a tools/ folder); pass one: checks stores <root>",
+              file=sys.stderr)
+        return 2
+    repos = []
+    for repo in runner.discover(ws):
+        rep = stores.inventory(repo)
+        status, lines = stores.verdict(rep)
+        repos.append({"rel": runner.rel(repo, ws), "repo": str(repo), "status": status,
+                      "unchecked": rep["unchecked"], "stores": rep["rows"]})
+    rows = [r for repo in repos for r in repo["stores"]]
+    c = stores.counts(rows)
+    if a.json:
+        print(json.dumps({"root": str(ws), "counts": c, "repos": repos}, indent=1))
+        return 0
+    for repo in repos:
+        if not repo["stores"] and not repo["unchecked"]:
+            continue
+        print(f"== {repo['rel']}  ({repo['status']})")
+        if repo["unchecked"]:
+            print(f"  UNCHECKED  {repo['unchecked']}")
+        for r in repo["stores"]:
+            print(f"  {stores.line(r)}")
+            for f in r["findings"]:
+                print(f"      {f}")
+    print(f"\nchecks stores {ws}: {c['stores']} store(s) in {sum(bool(r['stores']) for r in repos)} of "
+          f"{len(repos)} location(s): {c['dynamic']} dynamic, {c['static']} static, {c['none']} with no kind "
+          f"({c['undeclared']} not declared in cli.json); {c['findings']} finding(s); "
+          f"{sum(bool(r['unchecked']) for r in repos)} UNCHECKED location(s); regen not run")
+    return 0
+
+
 COMMANDS = {"list": cmd_list, "explain": cmd_explain, "run": cmd_run, "one": cmd_one,
-            "all": cmd_all, "fixtures": cmd_fixtures, "writers": cmd_writers}
+            "all": cmd_all, "fixtures": cmd_fixtures, "writers": cmd_writers, "stores": cmd_stores}
 
 
 def main(argv):
@@ -206,6 +246,9 @@ def main(argv):
         p.add_argument("name")
     if argv[0] == "writers":
         p.add_argument("path", nargs="?")
+    if argv[0] == "stores":
+        p.add_argument("path", nargs="?")
+        p.add_argument("--root")
     if argv[0] in ("run", "one", "all"):
         p.add_argument("path", nargs="?")
         p.add_argument("--root")

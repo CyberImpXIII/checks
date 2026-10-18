@@ -91,8 +91,13 @@ def store_files(doc, files):
     """The files (repo-relative, from `files`) a valid cli.json's `store` names,
     by path or glob, whatever their extension: the one reading of `store` for
     every check (accessor, stores-readonly). [] when it declares no store."""
-    globs = [norm(s) for s in store_paths(doc)]
-    return sorted({p for p in files if any(fnmatch.fnmatch(p, g) for g in globs)})
+    return sorted({p for s in store_paths(doc) for p in entry_files(s, files)})
+
+
+def entry_files(entry, files):
+    """The files (from `files`) one `store` entry or `renders` key names, by path or glob."""
+    g = norm(entry)
+    return sorted(p for p in files if fnmatch.fnmatch(p, g))
 
 
 # --- services.json ----------------------------------------------------------
@@ -177,6 +182,39 @@ def _renders(doc, repo):
             out.append(f"$.renders: `{path}` is not a path inside the repo")
         if verb not in doc["verbs"]:
             out.append(f"$.renders.{path}: `{verb}` is not a verb $.verbs lists")
+    return out
+
+
+# cli.json `kinds`: each store's kind (PLAN-services.md ST5), read by checkslib/stores.py.
+KIND_FIELDS = {"dynamic": {"schema_version", "export"}, "static": {"producer", "regen", "immutable"}}
+
+
+def kind_keys(doc):
+    """The entries `kinds` may name: every `store` entry and every `renders` key, normalised."""
+    return {norm(s) for s in store_paths(doc)} | {norm(k) for k in doc.get("renders") or {}}
+
+
+def _kinds(doc, repo):
+    out = []
+    keys = kind_keys(doc)
+    for key, spec in sorted((doc.get("kinds") or {}).items()):
+        w = f"$.kinds.{key}"
+        if norm(key) not in keys:
+            out.append(f"{w}: `{key}` is not an entry of $.store or a key of $.renders")
+        kind = spec["kind"]
+        other = "static" if kind == "dynamic" else "dynamic"
+        out += [f"{w}: `{f}` belongs to a {other} store, not a {kind} one" for f in sorted(set(spec) & KIND_FIELDS[other])]
+        if kind == "dynamic":
+            out += [f"{w}: a dynamic store names its `{f}`" for f in ("schema_version", "export") if f not in spec]
+            if "export" in spec and spec["export"] not in doc["verbs"]:
+                out.append(f"{w}.export: `{spec['export']}` is not a verb $.verbs lists")
+        else:
+            if "producer" not in spec:
+                out.append(f"{w}: a static store names its `producer`")
+            if ("regen" in spec) == ("immutable" in spec):
+                out.append(f"{w}: a static store has exactly one of `regen` (the command) or `immutable: true`")
+            if "regen" in spec and not inside(spec["regen"][0]):
+                out.append(f"{w}.regen: `{spec['regen'][0]}` is not a path inside the repo (the copy's own program runs)")
     return out
 
 
@@ -315,7 +353,7 @@ RULES = {
                "verb-implemented": _services_verbs, "unique": _services_unique, "write-declared": _write_declared},
     CLI: {"paths-inside": _cli_inside, "cli-executable": _cli_executable, "verb-implemented": _cli_verbs,
           "unique": _cli_unique, "not-verbs-exact": _cli_not_verbs, "not-exported-declared": _not_exported,
-          "renders-declared": _renders, "read-declared": _read_declared,
+          "renders-declared": _renders, "kinds-declared": _kinds, "read-declared": _read_declared,
           "read-json": _read_json, "read-fixture": _read_fixture, "read-env": _read_env,
           "volatile-paths": _volatile_paths},
     NODE: {"paths-inside": _node_inside, "unique": _node_unique, "generated-exact": _generated_exact,

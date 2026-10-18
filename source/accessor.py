@@ -32,37 +32,30 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from checkslib import api, contract, scan  # noqa: E402
+from checkslib import api, contract, scan, stores  # noqa: E402
 
-STORE_SHAPED = ["*.db", "*.sqlite", "*.sqlite3"]
 NEVER_SCANNED = list(contract.FILES) + ["checks.json"]
-
-
-def in_dot_folder(rel):
-    return any(part.startswith(".") for part in rel.split("/")[:-1])
 
 
 def main():
     ctx = api.context()
     exclude = list(ctx.param("exclude", []))
     impl = list(ctx.param("impl", []))
-    shaped = STORE_SHAPED + list(ctx.param("stores", []))
     files = scan.walk(ctx.repo)
-    on_disk = [p for p in files if scan.matches(p, shaped) and not in_dot_folder(p)
-               and not scan.matches(p, ["tests/*", "test/*"] + exclude)]
+    on_disk = stores.on_disk(files, ctx.param("stores", []), exclude)   # the store-name rule stores-classified shares
     doc, found = contract.read(ctx.repo, contract.CLI)
     if doc is None:
         if found:
             api.done(found)
         api.done([f"{p}: a store with no {contract.CLI} naming its one CLI" for p in on_disk])
-    stores = [contract.norm(s) for s in contract.store_paths(doc)]
+    entries = [contract.norm(s) for s in contract.store_paths(doc)]
     declared = contract.store_files(doc, files)
     findings = list(found)
     findings += [f"{p}: a store {contract.CLI} does not name (one gated CLI per store)"
                  for p in on_disk if p not in declared]
     if not contract.has_store(doc):
         api.done(findings)              # a CLI over no store: parts 1 and 2 hold, part 3 has no store to guard
-    names = sorted({Path(s).name for s in stores if not contract.GLOB & set(s)} | {Path(p).name for p in declared})
+    names = sorted({Path(s).name for s in entries if not contract.GLOB & set(s)} | {Path(p).name for p in declared})
     if not names:
         api.done(findings, unchecked=f"{contract.CLI}'s store matches no file: no name to look for around the CLI")
     rx = re.compile(r"(?<![\w.-])(" + "|".join(map(re.escape, names)) + r")(?![\w-]|\.\w)")

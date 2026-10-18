@@ -64,6 +64,7 @@ class Schemas(unittest.TestCase):
         maps = {"cli.json.not_verbs": (contract.CLI, "not-verbs-exact"),
                 "cli.json.not_exported": (contract.CLI, "not-exported-declared"),
                 "cli.json.renders": (contract.CLI, "renders-declared"),
+                "cli.json.kinds": (contract.CLI, "kinds-declared"),
                 "cli.json.read.env": (contract.CLI, "read-env"),
                 "cli.json.read.verbs": (contract.CLI, "read-declared")}
         seen = set()
@@ -101,6 +102,9 @@ CLIDOC = {"store": "app.db", "cli": "store.sh", "verbs": ["add", "list"]}
 CLIDOC_ALL = dict(CLIDOC, _comment="prose", not_verbs={"drop": "the store's owner only"},
                   not_exported={"./app.db": "private: never exported"},
                   renders={"TODO.md": "list", "out/*.txt": "list"},
+                  kinds={"./app.db": {"kind": "dynamic", "schema_version": 1, "export": "list"},
+                         "TODO.md": {"kind": "static", "producer": "store.sh list", "regen": ["store.sh", "list"]},
+                         "out/*.txt": {"kind": "static", "producer": "store.sh list", "immutable": True}},
                   read={"fixture": "fx", "env": {"APP_DATA": "{fixture}"},
                         "verbs": {"list": {"args": ["--json"], "volatile": ["at", "rows.*.seen"]}}})
 
@@ -134,6 +138,8 @@ RULE_MUTANTS = [
      "$.renders.TODO.md: `render` is not a verb $.verbs lists"),
     (contract.CLI, "renders-declared", lambda d: d["renders"].update({"../up.md": "list"}),
      "$.renders: `../up.md` is not a path inside the repo"),
+    (contract.CLI, "kinds-declared", lambda d: d["kinds"].update({"gone.db": {"kind": "static", "producer": "p", "immutable": True}}),
+     "$.kinds.gone.db: `gone.db` is not an entry of $.store or a key of $.renders"),
     (contract.CLI, "read-declared", lambda d: d["read"]["verbs"].update(drop={"args": ["--json"]}),
      "$.read.verbs.drop: `drop` is not a verb $.verbs lists"),
     (contract.CLI, "read-json", lambda d: _read_verb(d, args=["-q"]), "$.read.verbs.list.args: no `--json`"),
@@ -234,6 +240,50 @@ class Rules(Case):
                 _, found = self.read(name, doc)
                 self.assertEqual([f for f in found if f.startswith(f"{name}: {rule}: ")],
                                  [f"{name}: {rule}: {w}" for w in want], found)
+
+    def test_kinds_each_way_it_can_be_wrong(self):
+        """kinds-declared's branches beyond the one mutant: each alone, each with its own line."""
+        name = contract.CLI
+        dyn, sta = CLIDOC_ALL["kinds"]["./app.db"], CLIDOC_ALL["kinds"]["TODO.md"]
+
+        def kinds(**over):
+            return dict(CLIDOC_ALL, kinds=dict(CLIDOC_ALL["kinds"], **over))
+        cases = {
+            "dynamic without its fields": (kinds(**{"./app.db": {"kind": "dynamic"}}), [
+                "$.kinds../app.db: a dynamic store names its `schema_version`",
+                "$.kinds../app.db: a dynamic store names its `export`"]),
+            "export not a verb": (kinds(**{"./app.db": dict(dyn, export="dump")}),
+                                  ["$.kinds../app.db.export: `dump` is not a verb $.verbs lists"]),
+            "dynamic with a static field": (kinds(**{"./app.db": dict(dyn, producer="p")}),
+                                            ["$.kinds../app.db: `producer` belongs to a static store, not a dynamic one"]),
+            "static with a dynamic field": (kinds(**{"TODO.md": dict(sta, schema_version=1)}),
+                                            ["$.kinds.TODO.md: `schema_version` belongs to a dynamic store, not a static one"]),
+            "static without a producer": (kinds(**{"TODO.md": {"kind": "static", "immutable": True}}),
+                                          ["$.kinds.TODO.md: a static store names its `producer`"]),
+            "static with both": (kinds(**{"TODO.md": dict(sta, immutable=True)}),
+                                 ["$.kinds.TODO.md: a static store has exactly one of `regen` (the command) or `immutable: true`"]),
+            "static with neither": (kinds(**{"TODO.md": {"kind": "static", "producer": "p"}}),
+                                    ["$.kinds.TODO.md: a static store has exactly one of `regen` (the command) or `immutable: true`"]),
+            "regen outside": (kinds(**{"TODO.md": dict(sta, regen=["/bin/sh", "-c", "x"])}),
+                              ["$.kinds.TODO.md.regen: `/bin/sh` is not a path inside the repo (the copy's own program runs)"]),
+        }
+        for label, (doc, want) in cases.items():
+            with self.subTest(label):
+                _, found = self.read(name, doc)
+                self.assertEqual([f for f in found if f.startswith(f"{name}: kinds-declared: ")],
+                                 [f"{name}: kinds-declared: {w}" for w in want], found)
+
+    def test_kinds_shape_is_held_by_the_schema(self):
+        for kinds, want in (({"TODO.md": {}}, "$.kinds.TODO.md: missing `kind`"),
+                            ({"TODO.md": {"kind": "cached"}}, "is not one of dynamic, static"),
+                            ({"TODO.md": {"kind": "static", "producer": "p", "immutable": False}}, "is not one of True"),
+                            ({"./app.db": {"kind": "dynamic", "schema_version": "1", "export": "list"}}, "is not integer"),
+                            ({"TODO.md": {"kind": "static", "producer": "p", "regen": []}}, "fewer than 1 item"),
+                            ({"TODO.md": {"kind": "static", "producr": "p"}}, "unknown key `producr`")):
+            with self.subTest(want):
+                got, found = self.read(contract.CLI, dict(CLIDOC_ALL, kinds=kinds))
+                self.assertIsNone(got)
+                self.assertIn(want, "\n".join(found))
 
     def test_read_shape_is_held_by_the_schema(self):
         for read, want in (({"verbs": {"list": {}}}, "$.read.verbs.list: missing `args`"),

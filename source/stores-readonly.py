@@ -24,10 +24,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from checkslib import api, contract, scan  # noqa: E402
+from checkslib import api, contract, scan, stores  # noqa: E402
 
-SQLITE = ["*.db", "*.sqlite", "*.sqlite3"]
-SQLITE_SIDE = [g + s for g in SQLITE for s in ("-wal", "-shm", "-journal")]
+SQLITE = stores.SQLITE
+SQLITE_SIDE = [g + s for g in SQLITE for s in stores.SQLITE_SIDE]
 
 
 def main():
