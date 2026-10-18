@@ -73,7 +73,9 @@ def load(path, label, registry, keys=None):
         return [], [f"{label}: unreadable ({e.__class__.__name__}: {str(e)[:120]})"], keys
     if not isinstance(doc, dict) or not isinstance(doc.get("rules"), list):
         return [], [f"{label}: not an object with a `rules` list"], keys
-    top_keys = {"_comment", "rules"} | ({"keys"} if registry else set())
+    # The registry also carries the practice rows (`practices`): their own reader
+    # and check (checkslib/practices.py, practices-valid), never this one's.
+    top_keys = {"_comment", "rules"} | ({"keys", "practices"} if registry else set())
     extra = sorted(set(doc) - top_keys)
     if extra:
         rf.findings.append(f"{label}: unknown top-level key(s) {', '.join(extra)}")

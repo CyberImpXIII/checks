@@ -2,6 +2,34 @@
 
 ## Own bugs
 
+- Practice rows (tl-283, 2026-10-18, PLAN-services.md §4 step 7.2): gates.json
+  `practices` block (102 rows from PRACTICES-rows.md: 97 live, 5 superseded;
+  17 blocked), `checks practices`, check `practices-valid`,
+  tests/test_practices.py, `practices-baseline.json` (774 red, measured live
+  over 20 locations; it moved 773 -> 774 between runs when the top's todo
+  store began failing `todo check` on tl-305, so a run is a snapshot of a
+  live workspace, not a constant). Open, by design or not yet built:
+  - 17 rows wait on Jacob's C1-C8 (gates.json `practices.blocked`, each with
+    its C<n> and why). When he decides, edit PRACTICES-rows.md, drop the
+    entry from `blocked`, re-run `checks practices --import <file>`.
+  - Deliberate difference: PRACTICES-rows.md counts 21 locations; `all` here
+    is what runner.discover finds (20). `.claude` has no CLAUDE.md, so it is
+    not a location; an explicit `applies` entry that is not one gives
+    `unknown` ("not a location checks all walks"), never a guess.
+  - 22 `memory:` sources live in the user's home and are counted, never
+    resolved. Probe if wanted: a `--memory DIR` option resolving them.
+  - A gate that is not one of this tool's checks (the harness's audit,
+    .claude hooks, another repo's dev.sh, setup) gives `unknown` until a cell
+    is recorded or step 7.4 (harness: agents.sh check, doctor) reports it.
+    Most of the 774 are these and prose rows with no recorded cell.
+  - The baseline depends on the caller's environment: `stores-exported`
+    needs DATA_REPO, `no-roster` needs --names. Measure with the same
+    environment the consumer (7.4) will use, or the count moves.
+  - No gate holds gates.json `practices.rows` equal to PRACTICES-rows.md
+    after an import: the md is the input, gates.json the registry (A1). A
+    stale import is only caught by reading. Decide whether a test should
+    compare them (it would turn this suite red on the dispatcher's edits).
+
 - The shared parts runner (done 2026-10-09, PLAN-small-tasks §7 step 1):
   checkslib/parts.py (VERSION 1.0.0, stdlib only), this repo's `./dev.sh
   check` = check.parts.json through it (20 parts; `--resume` after a red

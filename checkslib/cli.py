@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-from checkslib import api, decl, runner, selftest, stores, writers
+from checkslib import api, decl, practices, runner, selftest, stores, writers
 
 USAGE = """checks <command>   the generic pre-commit gates, one source, run per repo or from the top
 
@@ -23,6 +23,16 @@ USAGE = """checks <command>   the generic pre-commit gates, one source, run per 
   checks stores [ROOT] [--json]      every store in every repo under ROOT (default: the workspace top)
                                      with its kind or none, and what stores-classified finds there,
                                      regen aside (PLAN-services.md ST5, the inventory); a report: exit 0
+  checks practices [ROOT] [--json]   each practice row in gates.json with its gate and status, its cells
+                                     (held | justified | unjustified | unknown) per location, the rows
+                                     blocked on Jacob's decisions, and the ratchet: exit 0 at or under
+                                     practices-baseline.json, 1 above it, 2 when it cannot say
+                                     (PLAN-services.md §3 A2); --row ID: one row's cells with why;
+                                     --from FILE: a saved `checks all --json` instead of running;
+                                     --lower: write a lower count as the baseline (a higher is refused);
+                                     --import FILE: the rows of a PRACTICES-rows.md into gates.json,
+                                     blocked ids left out, recorded cells kept;
+                                     --registry FILE / --baseline FILE: others than this repo's (tests)
 
   --root DIR         the workspace top (default: two up, when this tool sits in tools/;
                      else none, and checks that need one say UNCHECKED)
@@ -226,8 +236,112 @@ def cmd_stores(a):
     return 0
 
 
+def _short(locs, n=6):
+    return ", ".join(locs[:n]) + (f" +{len(locs) - n}" if len(locs) > n else "")
+
+
+def cmd_practices(a):
+    """The practice rows (PLAN-services.md §3 A2, §4 step 7.2): each row with
+    its gate and status, its cells in the four states, and the ratchet.
+    Exit 0 at or under the baseline, 1 above it, 2 when it cannot say."""
+    reg = Path(a.registry) if a.registry else practices.REGISTRY
+    if a.import_md:
+        summary, problems = practices.import_md(a.import_md, reg)
+        for p in problems:
+            print(f"  REFUSED  {p}", file=sys.stderr)
+        if problems:
+            return 2
+        print(f"checks practices --import: {summary['rows']} row(s) from {summary['file']} into {reg.name} "
+              f"({summary['live']} live, {summary['not_live']} superseded or retired), {summary['blocked']} blocked "
+              f"left out; run `checks one practices-valid .` next")
+        return 0
+    block, faults = practices.load(reg)
+    if block is None:
+        print(f"checks practices: {faults[0]}", file=sys.stderr)
+        return 2
+    ws = Path(a.path).resolve() if a.path else _ws(a)
+    findings, notes = practices.validate(block, ws if ws and ws.is_dir() else None, a.source)
+    if findings:
+        for f in findings:
+            print(f"  INVALID  {f}", file=sys.stderr)
+        print(f"checks practices: the registry has {len(findings)} finding(s) (checks one practices-valid); "
+              f"no cells from an invalid registry", file=sys.stderr)
+        return 2
+    rows = block["rows"]
+    if a.from_report:
+        try:
+            locs, results = practices.from_report(json.loads(Path(a.from_report).read_text()))
+        except (OSError, ValueError) as e:
+            print(f"checks practices: --from {a.from_report}: unreadable ({e})", file=sys.stderr)
+            return 2
+        measured = f"from {a.from_report}"
+    else:
+        if ws is None or not ws.is_dir():
+            print("checks practices: no workspace top (this tool is not in a tools/ folder); pass one, or --from "
+                  "a saved `checks all --json`", file=sys.stderr)
+            return 2
+        locs, results = practices.run_live(rows, ws, a.source, _names(a))
+        measured = f"live, {len(locs)} location(s) under {ws}"
+    table = practices.cells(rows, locs, results)
+    red = practices.red(rows, table)
+    base_path = Path(a.baseline) if a.baseline else practices.BASELINE
+    if a.lower:
+        written, why = practices.lower_baseline(red, base_path, measured)
+        print(f"checks practices --lower: {why}")
+        return 0 if written or why.startswith("unchanged") else 1
+    base, base_why = practices.read_baseline(base_path)
+    verdict = "no baseline" if base is None else ("ok" if red <= base else "RISEN")
+    rc = 2 if base is None else (0 if red <= base else 1)
+    if a.row:
+        if a.row not in table:
+            print(f"checks practices: no live row '{a.row}'", file=sys.stderr)
+            return 2
+        table = {a.row: table[a.row]}
+    if a.json:
+        out = []
+        for r in rows:
+            if a.row and r["id"] != a.row:
+                continue
+            item = {k: r.get(k) for k in ("id", "part", "principle", "status", "held", "applies") if k in r}
+            if r["id"] in table:
+                item["counts"] = practices.counts(table[r["id"]])
+                item["cells"] = table[r["id"]]
+            out.append(item)
+        print(json.dumps({"measured": measured, "locations": locs, "rows": out, "blocked": block.get("blocked", []),
+                          "ratchet": {"red": red, "baseline": base, "ok": rc == 0, "why": base_why}}, indent=1))
+        return rc
+    if a.row:
+        for loc, c in table[a.row].items():
+            print(f"  {loc:<34} {c['state']:<12} {c['why'][:160]}")
+    else:
+        for r in rows:
+            h = r.get("held") or {}
+            what = h.get("kind", "-") + (f" {h['gate']}" if h.get("gate") else "")
+            if h.get("check") or h.get("via"):
+                what += f" [{practices.check_of(r)}]"
+            if r["id"] not in table:
+                print(f"  {r['id']:<30} {r.get('status', '')[:70]}")
+                continue
+            c = practices.counts(table[r["id"]])
+            bad = [loc for loc, cell in table[r["id"]].items() if cell["state"] == "unjustified"]
+            print(f"  {r['id']:<30} {what[:58]:<58} held {c['held']:>2} justified {c['justified']:>2} "
+                  f"unjustified {c['unjustified']:>2} unknown {c['unknown']:>2}" + (f"  broken: {_short(bad)}" if bad else ""))
+        blocked = block.get("blocked", [])
+        if blocked:
+            print("\nleft out, blocked on a decision that is Jacob's (PRACTICES-rows.md \"Conflicts\"):")
+            for b in blocked:
+                print(f"  {b['conflict']:<4} {b['id']:<30} {b['why'][:110]}")
+    n_live = len(practices.live(rows))
+    print(f"\nchecks practices ({measured}): {n_live} live row(s), {len(rows) - n_live} superseded or retired, "
+          f"{len(block.get('blocked', []))} blocked; ratchet: {red} red cell(s) (unjustified + unknown, principles "
+          f"aside), baseline {base if base is not None else '-'} -> {verdict}"
+          + (f" ({base_why})" if base_why else "") + ("; " + notes[0] if notes else ""))
+    return rc
+
+
 COMMANDS = {"list": cmd_list, "explain": cmd_explain, "run": cmd_run, "one": cmd_one,
-            "all": cmd_all, "fixtures": cmd_fixtures, "writers": cmd_writers, "stores": cmd_stores}
+            "all": cmd_all, "fixtures": cmd_fixtures, "writers": cmd_writers, "stores": cmd_stores,
+            "practices": cmd_practices}
 
 
 def main(argv):
@@ -249,6 +363,16 @@ def main(argv):
     if argv[0] == "stores":
         p.add_argument("path", nargs="?")
         p.add_argument("--root")
+    if argv[0] == "practices":
+        p.add_argument("path", nargs="?")
+        p.add_argument("--root")
+        p.add_argument("--names")
+        p.add_argument("--from", dest="from_report")
+        p.add_argument("--row")
+        p.add_argument("--baseline")
+        p.add_argument("--registry")
+        p.add_argument("--lower", action="store_true")
+        p.add_argument("--import", dest="import_md")
     if argv[0] in ("run", "one", "all"):
         p.add_argument("path", nargs="?")
         p.add_argument("--root")

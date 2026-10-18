@@ -1,0 +1,5 @@
+{
+ "_comment": "The practices ratchet (PLAN-services.md \u00a73 A2): the count of red cells (unjustified + unknown, principles aside) that `checks practices` may report. It only falls: `checks practices --lower` rewrites it, and refuses a higher count.",
+ "red": 774,
+ "measured": "live, 20 location(s) under /Users/Specter/Desktop/claudeTest"
+}
