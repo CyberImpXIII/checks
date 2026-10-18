@@ -448,6 +448,13 @@
   so its store is never judged -- settle: `tools/checks/checks stores
   /Users/Specter/Desktop/claudeTest | grep usage` (each row "no file on disk;
   a `~` path"). The decision is in Open decisions above.
+- hooks (2026-10-18, tl-269): `./dev.sh check` is 22 of 23: test.contract's
+  test_hooks_installed_follows_the_real_user_scope_report pins hooks'
+  support split, and under the test's proposed user settings hooks now
+  reports `covered: null` for .claude/lib/ledger.sh and
+  .claude/lib/write-targets.sh (pin: True and False). The assertion reads
+  only `hooks copies --json` output, so no checks change moves it. Settle
+  the pin with hooks: `./dev.sh test test.contract` here.
 - hooks (2026-10-18, tl-269): unverified: store-guard ignores the new
   `kinds` key in cli.json (it reads `store`/`cli`/`verbs`/`renders` by jq
   path) -- settle: from tools/hooks, run its store-guard test with a cli.json
