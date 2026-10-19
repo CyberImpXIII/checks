@@ -1,6 +1,6 @@
 {
-  "_comment": "This repo's CLI and verbs (PLAN-architecture.md §12.1); it keeps no store. `list` and `writers` are the read verbs: `run`/`all`/`one`/`fixtures` run checks (repro among them), so they are not declared here; `stores` reads but walks the whole workspace, which repro would do twice pre-commit, so it is not declared either; `practices` runs the checks its rows name across the whole workspace (and `--import`/`--lower` write gates.json and the baseline), so it is not a read verb.",
+  "_comment": "This repo's CLI and verbs (PLAN-architecture.md §12.1); it keeps no store. `list` and `writers` are the read verbs: `run`/`all`/`one`/`fixtures` run checks (repro among them), so they are not declared here; `stores` and `tools` read but walk the whole workspace, which repro would do twice pre-commit, so they are not declared either; `practices` runs the checks its rows name across the whole workspace (and `--import`/`--lower` write gates.json and the baseline), so it is not a read verb.",
   "cli": "checks",
-  "verbs": ["list", "explain", "run", "one", "all", "fixtures", "writers", "stores", "practices"],
+  "verbs": ["list", "explain", "run", "one", "all", "fixtures", "writers", "stores", "tools", "practices"],
   "read": {"verbs": {"list": {"args": ["--json"]}, "writers": {"args": ["--json"]}}}
 }

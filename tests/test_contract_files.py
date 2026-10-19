@@ -97,6 +97,9 @@ class Schemas(unittest.TestCase):
 
 SERVICES = {"name": "r", "tags": ["t"], "services": [{"service": "check", "run": "dev.sh", "verbs": ["check"]},
                                                      {"service": "write", "run": "store.sh", "verbs": ["add"]}]}
+# The registration fields (PLAN-architecture.md §9 step 10.1); `./app.db` is cli.json's `app.db`.
+SERVICES_ALL = dict(SERVICES, description="r: keeps rows", stores=["./app.db"],
+                    shapes={"reads": ["row.v1"], "emits": ["note.v1"]})
 CLIDOC = {"store": "app.db", "cli": "store.sh", "verbs": ["add", "list"]}
 # The harness's shape (.claude/cli.json): every other command named, with why.
 CLIDOC_ALL = dict(CLIDOC, _comment="prose", not_verbs={"drop": "the store's owner only"},
@@ -126,6 +129,12 @@ RULE_MUTANTS = [
     (contract.SERVICES, "run-executable", lambda d: d["services"][1].update(run="nope.sh"), "`nope.sh` does not exist"),
     (contract.SERVICES, "verb-implemented", lambda d: d["services"][1]["verbs"].append("purge"), "does not implement `purge`"),
     (contract.SERVICES, "unique", lambda d: d["tags"].append("t"), "tag `t` given twice"),
+    (contract.SERVICES, "unique", lambda d: d["stores"].append("app.db"), "store `app.db` given twice"),
+    (contract.SERVICES, "unique", lambda d: d["shapes"]["emits"].append("note.v1"), "shape id `note.v1` given twice"),
+    (contract.SERVICES, "description-one-line", lambda d: d.update(description="one\ntwo"), "more than one line"),
+    (contract.SERVICES, "description-one-line", lambda d: d.update(description="   "), "$.description: blank"),
+    (contract.SERVICES, "stores-declared", lambda d: d["stores"].append("cache.db"),
+     "$.stores: `cache.db` is not a store cli.json declares"),
     (contract.SERVICES, "write-declared", lambda d: d["services"][1]["verbs"].append("drop"), "`drop` is not a verb cli.json declares"),
     (contract.CLI, "paths-inside", lambda d: d.update(store="/abs/app.db"), "`/abs/app.db` is not a path inside"),
     (contract.CLI, "cli-executable", lambda d: d.update(cli="plain.txt"), "`plain.txt` is not executable"),
@@ -162,7 +171,7 @@ class Rules(Case):
         cli(self.r / "store.sh", "add", "list", "drop")
         (self.r / "fx").mkdir()
         write(self.r / "plain.txt", "x\n")
-        self.clean = {contract.SERVICES: SERVICES, contract.CLI: CLIDOC_ALL, contract.NODE: NODEDOC, contract.VERIFY: VERIFYDOC}
+        self.clean = {contract.SERVICES: SERVICES_ALL, contract.CLI: CLIDOC_ALL, contract.NODE: NODEDOC, contract.VERIFY: VERIFYDOC}
         for name, doc in self.clean.items():
             write(self.r / name, json.dumps(doc))
 

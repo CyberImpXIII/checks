@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-from checkslib import api, decl, practices, runner, selftest, stores, writers
+from checkslib import api, decl, practices, registry, runner, selftest, stores, writers
 
 USAGE = """checks <command>   the generic pre-commit gates, one source, run per repo or from the top
 
@@ -23,6 +23,10 @@ USAGE = """checks <command>   the generic pre-commit gates, one source, run per 
   checks stores [ROOT] [--json]      every store in every repo under ROOT (default: the workspace top)
                                      with its kind or none, and what stores-classified finds there,
                                      regen aside (PLAN-services.md ST5, the inventory); a report: exit 0
+  checks tools [ROOT] [--json]       every repo under ROOT (default: the workspace top) as a tool: its
+                                     services.json name, description, stores, shapes and verbs, and
+                                     what `registered` finds there (PLAN-architecture.md §6, the list
+                                     collected from each repo's own entry); a report: exit 0
   checks practices [ROOT] [--json]   each practice row in gates.json with its gate and status, its cells
                                      (held | justified | unjustified | unknown) per location, the rows
                                      blocked on Jacob's decisions, and the ratchet: exit 0 at or under
@@ -236,6 +240,33 @@ def cmd_stores(a):
     return 0
 
 
+def cmd_tools(a):
+    """The collected tool list (PLAN-architecture.md §6 "Every tool registered",
+    §9 step 10.1): registered's own reading (checkslib/registry.py) of every
+    repo `checks all` walks, in this process. Each repo's status is the check's."""
+    ws = Path(a.path).resolve() if a.path else _ws(a)
+    if ws is None or not ws.is_dir():
+        print("checks tools: no workspace top (this tool is not in a tools/ folder); pass one: checks tools <root>",
+              file=sys.stderr)
+        return 2
+    tools = [dict(registry.entry(repo), rel=runner.rel(repo, ws), repo=str(repo)) for repo in runner.discover(ws)]
+    c = registry.counts(tools)
+    if a.json:
+        print(json.dumps({"root": str(ws), "counts": c, "tools": tools}, indent=1))
+        return 0
+    width = max([len(t["rel"]) for t in tools] + [4])
+    for t in tools:
+        print(f"  {t['rel']:<{width}}  {MARK[t['status']]:<4}  {registry.line(t)}")
+        for f in t["findings"]:
+            print(f"  {'':<{width}}        {f}")
+        if t["unchecked"]:
+            print(f"  {'':<{width}}        UNCHECKED: {t['unchecked']}")
+    print(f"\nchecks tools {ws}: {c['locations']} location(s), {c['registered']} registered; "
+          f"{c['no_services_json']} with no services.json, {c['no_description']} with no description; "
+          f"{c['findings']} finding(s); {c['unchecked']} UNCHECKED")
+    return 0
+
+
 def _short(locs, n=6):
     return ", ".join(locs[:n]) + (f" +{len(locs) - n}" if len(locs) > n else "")
 
@@ -341,7 +372,7 @@ def cmd_practices(a):
 
 COMMANDS = {"list": cmd_list, "explain": cmd_explain, "run": cmd_run, "one": cmd_one,
             "all": cmd_all, "fixtures": cmd_fixtures, "writers": cmd_writers, "stores": cmd_stores,
-            "practices": cmd_practices}
+            "tools": cmd_tools, "practices": cmd_practices}
 
 
 def main(argv):
@@ -360,7 +391,7 @@ def main(argv):
         p.add_argument("name")
     if argv[0] == "writers":
         p.add_argument("path", nargs="?")
-    if argv[0] == "stores":
+    if argv[0] in ("stores", "tools"):
         p.add_argument("path", nargs="?")
         p.add_argument("--root")
     if argv[0] == "practices":

@@ -1,5 +1,7 @@
 {
   "name": "checks",
+  "description": "The one source of the generic pre-commit gates every repo runs, and the runner that applies them per repo or across the workspace.",
+  "stores": [],
   "services": [
     {
       "service": "check",

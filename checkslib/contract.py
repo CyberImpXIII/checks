@@ -128,7 +128,46 @@ def _services_unique(doc, repo):
     out = _dupes([f"{s['service']} {norm(s['run'])}" for s in doc["services"]], "$.services", "entry")
     for i, s in enumerate(doc["services"]):
         out += _dupes(s["verbs"], f"$.services[{i}].verbs", "verb")
+    out += _dupes([norm(s) for s in doc.get("stores", [])], "$.stores", "store")
+    for k in ("reads", "emits"):
+        out += _dupes((doc.get("shapes") or {}).get(k, []), f"$.shapes.{k}", "shape id")
     return out + _dupes(doc.get("tags", []), "$.tags", "tag")
+
+
+def _description_one_line(doc, repo):
+    d = doc.get("description")
+    if d is None:
+        return []                                   # absent: `registered` reports it, as a lag
+    if "\n" in d or "\r" in d:
+        return ["$.description: more than one line (the stub is one line)"]
+    return [] if d.strip() else ["$.description: blank (no words on it)"]
+
+
+def cli_stores(repo):
+    """(cli.json's `store` entries normalised, None) or (None, why they cannot
+    be read). No cli.json, or one with no `store`, declares none: ([], None)."""
+    p = Path(repo) / CLI
+    if not p.is_file():
+        return [], None
+    try:
+        cli = json.loads(p.read_text())
+    except ValueError:
+        return None, f"{CLI} does not parse"
+    s = cli.get("store") if isinstance(cli, dict) else None
+    if not isinstance(cli, dict) or not (s is None or isinstance(s, str)
+                                         or (isinstance(s, list) and all(isinstance(x, str) for x in s))):
+        return None, f"{CLI}'s `store` is not a path or a list of paths"
+    return [norm(x) for x in store_paths(cli)], None
+
+
+def _stores_declared(doc, repo):
+    if not doc.get("stores"):
+        return []
+    have, why = cli_stores(repo)
+    if have is None:
+        return [f"$.stores: {why}, so no entry can be shown declared"]
+    return [f"$.stores: `{s}` is not a store {CLI} declares" + ("" if have else " (it declares none)")
+            for s in doc["stores"] if norm(s) not in have]
 
 
 def _write_declared(doc, repo):
@@ -350,7 +389,8 @@ def _verify_unique(doc, repo):
 RULES = {
     VERIFY: {"unique": _verify_unique},
     SERVICES: {"one-check": _one_check, "run-inside": _run_inside, "run-executable": _run_executable,
-               "verb-implemented": _services_verbs, "unique": _services_unique, "write-declared": _write_declared},
+               "verb-implemented": _services_verbs, "unique": _services_unique, "write-declared": _write_declared,
+               "description-one-line": _description_one_line, "stores-declared": _stores_declared},
     CLI: {"paths-inside": _cli_inside, "cli-executable": _cli_executable, "verb-implemented": _cli_verbs,
           "unique": _cli_unique, "not-verbs-exact": _cli_not_verbs, "not-exported-declared": _not_exported,
           "renders-declared": _renders, "kinds-declared": _kinds, "read-declared": _read_declared,

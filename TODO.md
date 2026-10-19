@@ -2,6 +2,31 @@
 
 ## Own bugs
 
+- Tool registration (tl-312, 2026-10-19, PLAN-architecture.md §9 step
+  10.1): services.json schema gains optional `description`, `stores`,
+  `shapes {reads, emits}`; x-rules `description-one-line` and
+  `stores-declared` (services-valid, all, so a wrong store is red
+  pre-commit); check `registered` (roles:lag) and `checks tools`, one
+  reading in checkslib/registry.py; tests/test_registered.py. First live
+  `checks tools` (2026-10-19): 20 locations, 2 registered (setup already had
+  a description; this repo's added here), 2 with no services.json (the top,
+  site-scrapers), 16 with no description; 7 repos' `stores` lack their
+  cli.json stores. Open, by design or not yet built:
+  - `registered` is roles:lag, not `all` (the plan says "fails a repo"):
+    `all` would turn every repo's pre-commit red until step 10.3's drafts
+    land. Flipping is one word once owners write descriptions.
+  - `stores` is a second copy of cli.json's `store`, held equal both ways
+    (stores-declared one way, registered the other). Whether `stores`
+    should exist at all, or be read from cli.json, is the plan's call.
+  - `shapes` ids are not resolved against data-bridge (its schemas sit in
+    its SQLite store behind its CLI); the shape `{reads, emits}` is this
+    repo's reading of §6's "reads and emits".
+  - The top has no services.json; whether it is a "tool" to register (its
+    files live in `.claude`, as cli-declared's cli_home) is not decided.
+  - unverified: setup's skeleton/drift reading and hub's registry tolerate
+    the new keys -- settle: `tools/setup/setup tools/checks --only services
+    --dry-run` and hub's registry render.
+
 - Practice rows (tl-283, 2026-10-18, PLAN-services.md §4 step 7.2): gates.json
   `practices` block (102 rows from PRACTICES-rows.md: 97 live, 5 superseded;
   17 blocked), `checks practices`, check `practices-valid`,

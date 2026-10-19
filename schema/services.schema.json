@@ -2,12 +2,23 @@
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "services.schema.json",
  "title": "services.json",
- "description": "A repo's declaration, ahead of time, of what the node's server may do with it (PLAN-routing-tree.md §14.8): the command its `check` service runs, the CLI and verbs its `write` service may run, the tags it owns for `route`. Setup installs the skeleton (the repo's name and its `check` entry only); the repo's owner fills it; the node's registry is the union of these files, held equal by `registry-matches`. `services-valid` validates this file against this schema with checkslib/checkjson.py (which refuses a keyword it does not enforce) and enforces each `x-rules` id in checkslib/contract.py. This is tools/checks' reading of §14.8's prose; the hub's registry plan may refine it.",
+ "description": "A repo's declaration, ahead of time, of what the node's server may do with it (PLAN-routing-tree.md §14.8): the command its `check` service runs, the CLI and verbs its `write` service may run, the tags it owns for `route`. It is also the repo's registration as a tool (PLAN-architecture.md §6 \"Every tool registered\", §9 step 10.1): its one-line `description`, the `stores` it owns and the `shapes` it reads and emits; the workspace list (`checks tools`) is collected from these entries, never written by hand. Setup installs the skeleton (the repo's name and its `check` entry only); the repo's owner fills it; the node's registry is the union of these files, held equal by `registry-matches`. `services-valid` validates this file against this schema with checkslib/checkjson.py (which refuses a keyword it does not enforce) and enforces each `x-rules` id in checkslib/contract.py; `registered` (roles:lag) asks for the description and for every store cli.json declares. This is tools/checks' reading of §14.8's prose; the hub's registry plan may refine it.",
  "type": "object",
  "additionalProperties": false,
  "required": ["name", "services"],
  "properties": {
   "name": {"type": "string", "minLength": 1, "description": "The repo's name, as setup wrote it."},
+  "description": {"type": "string", "minLength": 1, "description": "One line saying what the tool is for: the stub of its registration (PLAN-architecture.md §6). Optional here; `registered` reports a repo without one."},
+  "stores": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "The stores this repo owns, by the same names cli.json's `store` gives them; `[]` says it owns none."},
+  "shapes": {
+   "type": "object",
+   "additionalProperties": false,
+   "description": "The data-bridge schema ids this repo reads and emits (the pipe stages of PLAN-job-sourcing.md §2), where it has any. The ids are not resolved against data-bridge here.",
+   "properties": {
+    "reads": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "Schema ids of the records it takes in."},
+    "emits": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "Schema ids of the records it puts out."}
+   }
+  },
   "services": {
    "type": "array",
    "minItems": 1,
@@ -30,7 +41,9 @@
   "run-inside": "every `run` is a relative path inside the repo: not absolute, no `..` segment",
   "run-executable": "every `run` exists and is executable",
   "verb-implemented": "every verb is a command `<run> help` lists (checkslib/helptext.py reads the help)",
-  "unique": "no (service, run) pair twice, no verb twice in one entry, no tag twice",
-  "write-declared": "a `write` entry whose `run` is the CLI cli.json names may pass only verbs cli.json declares: nothing undeclared reaches the store"
+  "unique": "no (service, run) pair twice, no verb twice in one entry, no tag twice, no store twice, no shape id twice in `reads` or in `emits`",
+  "write-declared": "a `write` entry whose `run` is the CLI cli.json names may pass only verbs cli.json declares: nothing undeclared reaches the store",
+  "description-one-line": "`description` is one line with words on it: no line break, not blank",
+  "stores-declared": "every `stores` entry is an entry of cli.json's `store` (compared normalised, `./a` is `a`): no store is owned that cli.json does not declare"
  }
 }
