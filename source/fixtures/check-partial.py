@@ -28,8 +28,9 @@ MUTANTS = {
     "late": ('        self.state["updated"] = now()\n',
              '        self.state["updated"] = now()\n        if self.state["state"] == "running":\n            return\n'),
     # names every part as passed before any has run
-    "eager": ("    pf.start(len(parts))\n",
-              "    pf.start(len(parts))\n    pf.state[\"passed_steps\"] = [p[\"name\"] for p in parts]\n    pf.write()\n"),
+    "eager": ('    pf.start(len(parts), jobs, [p["name"] for p in parts])\n',
+              '    pf.start(len(parts), jobs, [p["name"] for p in parts])\n'
+              '    pf.state["passed_steps"] = [p["name"] for p in parts]\n    pf.write()\n'),
     # --resume reruns every part, changed or not
     "rerun": ('skip = {p["name"] for p in parts if not p["always"] and old.get(p["name"]) == hashes[p["name"]]}',
               "skip = set()"),

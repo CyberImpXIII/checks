@@ -17,12 +17,13 @@ _spec.loader.exec_module(fx)
 
 FAST = {"CHECKS_CHECK_PARTIAL_RUN_TIMEOUT": "8"}
 
-# Each mutant -> (the one scenario it turns red, a line it must print).
+# Each mutant -> (the one scenario it turns red, the start of a line it must print:
+# p3 may pass beside p1 before the kill, so `killed` names p1 first, maybe p3 after).
 CASES = {
     "late": ("killed", "killed: a run killed while p2 hung left no progress file with `passed_steps`"
-                       " at PROGRESS_FILE (passed by then: p1)"),
+                       " at PROGRESS_FILE (passed by then: p1"),
     "eager": ("killed", "killed: a run killed while p2 hung left `passed_steps` ['p1', 'p2', 'p3'],"
-                        " but the parts that had passed were ['p1']"),
+                        " but the parts that had passed were ['p1'"),
     "rerun": ("changed", "changed: after an edit to p3's file only, `--resume` ran p1, p2, p3 (wanted p3 alone)"),
     "skip": ("changed", "changed: after an edit to p3's file only, `--resume` ran no part (wanted p3 alone)"),
     "drop-skipped": ("changed", "changed: `--resume` reported 1 part(s), p1=None, p2=None (wanted all 3, each ok:"
@@ -69,7 +70,7 @@ class CheckPartial(Case):
                 r = self.one(fx.repo(self.tmp / str(i), (mutant,)))
                 self.assertEqual(r["status"], "fail", r["lines"])
                 self.assertEqual(self.scenarios(r), [scenario], r["lines"])
-                self.assertIn(line, r["lines"])
+                self.assertTrue(any(x.startswith(line) for x in r["lines"]), (line, r["lines"]))
 
     def test_a_runner_writing_the_repos_own_progress_file_is_named(self):
         repo = fx.repo(self.tmp, ("own-file",))

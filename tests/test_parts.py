@@ -6,10 +6,17 @@ refusal to resume said; a timeout stopping the part's whole tree; a TERM
 leaving the file `failed` and the rest `unchecked`; the text summary and the
 --json document (validated by checkjson) green and red; the copy loading
 nothing beside it; and this repo's check.parts.json held to its test modules.
+The pool (PLAN-check-progress.md §10 step 1): two parts sharing a `uses` value
+never overlap and a `serial` part runs alone (each beside its counterfactual,
+the same parts without it overlapping); --jobs bounds the pool; a failing part
+stops no other; the report is in the file's order, not the order parts end;
+--jobs 1 prints what the one-at-a-time runner (1.3.0) printed; the `time:`
+line's numbers move with their inputs.
 check-partial (tests/test_check_partial.py) holds the same runner from outside."""
 import ast
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -19,6 +26,10 @@ from tests.helpers import Case, TOOL_ROOT, write
 from checkslib import checkjson, parts
 
 PARTS = TOOL_ROOT / "checkslib" / "parts.py"
+# The last one-at-a-time runner (1.3.0), what `--jobs 1` is held to.
+ONE_AT_A_TIME = "c1a4a6e"
+# A part that holds `lock` for 1.5s, and says `clash` when another holds it.
+HOLD = "if mkdir lock 2>/dev/null; then sleep 1.5; rmdir lock; else echo clash >> clashes; sleep 1.5; fi"
 
 
 def part(name, run="true", files=("a.txt",), **kw):
@@ -74,6 +85,10 @@ class Parts(Case):
             "part p: `files` names nope.txt, which does not exist": {"parts": [part("p", files=["nope.txt"])]},
             "defaults: `timeout_s` is not a number above 0": {"defaults": {"timeout_s": True}, "parts": [part("p")]},
             "part p: `files` is not a list of non-empty strings": {"parts": [dict(part("p", always="x"), files="a.txt")]},
+            "part p: `uses` is not a list of non-empty strings": {"parts": [part("p", uses="serial")]},
+            "part p: `uses` value 'Serial' is not browser, serial or store:<name>": {"parts": [part("p", uses=["Serial"])]},
+            "part p: `uses` value 'store:' is not": {"parts": [part("p", uses=["store:"])]},
+            "defaults: unknown key `uses`": {"defaults": {"uses": ["serial"]}, "parts": [part("p")]},
         }
         for want, doc in cases.items():
             with self.subTest(fault=want):
@@ -131,7 +146,7 @@ class Parts(Case):
         finally:
             del os.environ["PARTS_RUNTIME"]
         self.assertEqual(self.h(p), h3)
-        self.assertEqual(self.h(dict(p, timeout_s=99, role="x")), h3, "timeout_s and role are not")
+        self.assertEqual(self.h(dict(p, timeout_s=99, role="x", uses=["serial"])), h3, "timeout_s, role and uses are not")
 
     def test_a_named_file_counts_by_content_whatever_shape_says(self):
         write(self.base / "s.sh", "1\n")
@@ -184,8 +199,10 @@ class Parts(Case):
         self.assertEqual(checkjson.validate(r.stdout, r.returncode), [])
         self.assertEqual([(c["name"], c["status"]) for c in json.loads(r.stdout)["checks"]], [("p1", "ok"), ("p2", "ok")])
         st = self.progress()
-        self.assertEqual((st["state"], st["passed_steps"], st["step"], st["total"], st["cmd"], st["runner"]),
+        self.assertEqual((st["state"], sorted(st["passed_steps"]), st["step"], st["total"], st["cmd"], st["runner"]),
                          ("passed", ["p1", "p2"], 2, 2, "parts", parts.VERSION))
+        self.assertEqual((st["jobs"], st["running"], sorted(st["times"])), (parts.default_jobs(), [], ["p1", "p2"]))
+        self.assertTrue(all(t["start"] <= t["end"] for t in st["times"].values()), st["times"])
 
     def test_red_names_each_failed_part_and_its_fail_lines(self):
         doc = {"defaults": {"role": "code"}, "parts": [
@@ -204,7 +221,7 @@ class Parts(Case):
         self.assertEqual([f["message"] for f in c[0]["failures"]], ["FAIL: test_one (x)", "ERROR: test_two"])
         self.assertEqual(c[0]["failures"][0]["role"], "code")
         st = self.progress()
-        self.assertEqual((st["state"], st["passed_steps"], st["failed_names"]), ("failed", ["p2"], ["p1", "p3"]))
+        self.assertEqual((st["state"], st["passed_steps"], sorted(st["failed_names"])), ("failed", ["p2"], ["p1", "p3"]))
 
     def test_exit_3_is_unchecked_and_any_other_exit_is_a_fail(self):
         """The exit code alone turns the status: 3 unchecked (green run), 4 fail (red)."""
@@ -245,10 +262,22 @@ class Parts(Case):
 
     def test_each_result_is_on_disk_before_the_next_part_runs(self):
         doc = {"parts": [part("p1"), part("p2", run='cp "$PROGRESS_FILE" seen.json')]}
-        self.assertEqual(self.run_parts(doc).returncode, 0)
+        self.assertEqual(self.run_parts(doc, "--jobs", "1").returncode, 0)
         seen = json.loads((self.base / "seen.json").read_text())
-        self.assertEqual((seen["passed_steps"], seen["label"], seen["state"], seen["pid"] > 0),
-                         (["p1"], "p2", "running", True))
+        self.assertEqual((seen["passed_steps"], seen["label"], seen["state"], seen["pid"] > 0, seen["running"]),
+                         (["p1"], "p2", "running", True, ["p2"]))
+
+    def test_in_a_pool_each_result_is_on_disk_as_it_ends_not_at_the_end(self):
+        """p2 runs beside p1 and waits (20s at most) to see p1's pass in the
+        progress file while it still runs itself."""
+        wait = ('n=0; while [ $n -lt 200 ]; do grep -q \'"passed_steps": \\["p1"\\]\' "$PROGRESS_FILE" && '
+                '{ cp "$PROGRESS_FILE" seen.json; exit 0; }; sleep 0.1; n=$((n+1)); done; exit 1')
+        doc = {"parts": [part("p1"), part("p2", run=wait)]}
+        r = self.run_parts(doc, "--jobs", "2")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        seen = json.loads((self.base / "seen.json").read_text())
+        self.assertEqual((seen["state"], seen["running"], "end" in seen["times"]["p1"], "end" in seen["times"]["p2"]),
+                         ("running", ["p2"], True, False))
 
     def test_a_progress_file_that_cannot_be_written_is_said_once_and_changes_nothing(self):
         r = self.run_parts({"parts": [part("p1"), part("p2")]}, env={"PROGRESS_FILE": "/dev/null/x/check.json"})
@@ -271,23 +300,185 @@ class Parts(Case):
         r = self.run_parts(doc)
         self.assertEqual(r.stdout.splitlines()[-1], "check: 1 of 2 passed; failed: p1 (timeout after 1s; no output)")
 
-    def test_term_stops_the_part_and_leaves_the_rest_unchecked(self):
-        doc = {"parts": [part("p1"), part("p2", run="touch started; sleep 60"), part("p3")]}
+    def terminated(self, doc, started, *flags):
+        """The run's (exit, stdout) after a TERM sent once every file in
+        `started` exists (30s at most, else the test fails naming them)."""
         path = write(self.base / "parts.json", json.dumps(doc))
         e = dict(os.environ, PROGRESS_FILE=str(self.pf))
-        p = subprocess.Popen([sys.executable, str(PARTS), "run", str(path), "--json"], stdout=subprocess.PIPE,
+        p = subprocess.Popen([sys.executable, str(PARTS), "run", str(path), *flags], stdout=subprocess.PIPE,
                              text=True, env=e, stdin=subprocess.DEVNULL)
         deadline = time.monotonic() + 30
-        while not (self.base / "started").exists() and time.monotonic() < deadline:
+        while not all((self.base / s).exists() for s in started) and time.monotonic() < deadline:
             time.sleep(0.05)
+        missing = [s for s in started if not (self.base / s).exists()]
         p.send_signal(signal.SIGTERM)
-        out, _ = p.communicate(timeout=30)
-        self.assertEqual(p.returncode, 128 + signal.SIGTERM)
-        self.assertEqual(checkjson.validate(out, p.returncode), [])
+        out, _ = p.communicate(timeout=60)
+        self.assertEqual(missing, [], f"waited 30s for {started}; the run said: {out}")
+        return p.returncode, out
+
+    def test_term_stops_the_part_and_leaves_the_rest_unchecked(self):
+        doc = {"parts": [part("p1"), part("p2", run="touch started; sleep 60"), part("p3")]}
+        code, out = self.terminated(doc, ["started"], "--json", "--jobs", "1")
+        self.assertEqual(code, 128 + signal.SIGTERM)
+        self.assertEqual(checkjson.validate(out, code), [])
         self.assertEqual([(c["name"], c["status"]) for c in json.loads(out)["checks"]],
                          [("p1", "ok"), ("p2", "error"), ("p3", "unchecked")])
         st = self.progress()
         self.assertEqual((st["state"], st["passed_steps"]), ("failed", ["p1"]))
+
+    def test_term_stops_every_running_part_and_kills_their_trees(self):
+        """In a pool, TERM stops all the running parts (each an error, its
+        child dead) and leaves the one never started unchecked."""
+        hang = "sleep 60 & echo $! > {0}.pid; touch {0}.started; wait"
+        doc = {"parts": [part("p1", run=hang.format("p1")), part("p2", run=hang.format("p2")),
+                         part("p3", uses=["serial"])]}
+        code, out = self.terminated(doc, ["p1.started", "p2.started"], "--jobs", "4")
+        self.assertEqual(code, 128 + signal.SIGTERM, out)
+        lines = out.splitlines()
+        self.assertEqual(lines[:2], ["ERROR p1 (stopped by signal 15)", "ERROR p2 (stopped by signal 15)"], out)
+        self.assertEqual(lines[-1], "check: 0 of 3 passed; failed: p1 (stopped by signal 15); "
+                                    "p2 (stopped by signal 15); not run: 1", out)
+        time.sleep(0.2)
+        for n in ("p1", "p2"):
+            kid = int((self.base / f"{n}.pid").read_text())
+            self.assertFalse(parts.alive(kid) and _not_zombie(kid), f"{n}'s child {kid} outlived the TERM")
+        st = self.progress()
+        self.assertEqual((st["state"], st["passed_steps"], st["running"], sorted(st["failed_names"])),
+                         ("failed", [], [], ["p1", "p2"]))
+
+    # ---- the pool ----------------------------------------------------------
+
+    def overlap(self, doc, *flags):
+        """Whether p1 and p2 ran at once: by the start and end times in the
+        progress file, and by the `lock` folder HOLD takes (a second witness)."""
+        (self.base / "clashes").unlink(missing_ok=True)
+        r = self.run_parts(doc, *flags)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        t = self.progress()["times"]
+        by_times = t["p1"]["start"] < t["p2"]["end"] and t["p2"]["start"] < t["p1"]["end"]
+        by_lock = (self.base / "clashes").exists()
+        self.assertEqual(by_times, by_lock, (t, r.stdout))
+        return by_times
+
+    def test_parts_sharing_a_uses_value_never_overlap(self):
+        def doc(u1, u2):
+            return {"parts": [part("p1", run=HOLD, uses=u1), part("p2", run=HOLD, uses=u2)]}
+        self.assertTrue(self.overlap(doc([], []), "--jobs", "2"), "the counterfactual: without uses they overlap")
+        self.assertTrue(self.overlap(doc(["store:a"], ["store:b"]), "--jobs", "2"), "different values may overlap")
+        self.assertFalse(self.overlap(doc(["store:a"], ["browser", "store:a"]), "--jobs", "2"))
+        self.assertFalse(self.overlap(doc(["browser"], ["browser"]), "--jobs", "2"))
+        self.assertFalse(self.overlap(doc(["serial"], []), "--jobs", "2"), "a serial part runs alone")
+        self.assertFalse(self.overlap(doc([], ["serial"]), "--jobs", "2"))
+        self.assertFalse(self.overlap(doc([], []), "--jobs", "1"), "--jobs 1 is one at a time")
+
+    def test_a_serial_part_waits_for_those_before_it_and_holds_those_after(self):
+        doc = {"parts": [part("p1", run="sleep 0.5"), part("p2", run="sleep 0.5", uses=["serial"]),
+                         part("p3", run="sleep 0.5"), part("p4", run="sleep 0.5")]}
+        self.assertEqual(self.run_parts(doc, "--jobs", "4").returncode, 0)
+        t = self.progress()["times"]
+        self.assertGreaterEqual(t["p2"]["start"], t["p1"]["end"], t)
+        self.assertGreaterEqual(min(t["p3"]["start"], t["p4"]["start"]), t["p2"]["end"], t)
+        self.assertLess(t["p3"]["start"], t["p4"]["end"], "after the serial part, the pool fills again")
+
+    def test_a_part_that_conflicts_lets_a_later_part_start_first(self):
+        """p2 shares p1's store, so it waits; p3 shares nothing and starts
+        beside p1 -- yet the report keeps p1, p2, p3."""
+        doc = {"parts": [part("p1", run="sleep 1", uses=["store:s"]), part("p2", run="true", uses=["store:s"]),
+                         part("p3", run="true")]}
+        r = self.run_parts(doc, "--jobs", "2")
+        t = self.progress()["times"]
+        self.assertLess(t["p3"]["start"], t["p2"]["start"], t)
+        self.assertEqual([line.split()[1] for line in r.stdout.splitlines()[:3]], ["p1", "p2", "p3"], r.stdout)
+
+    def test_the_report_is_in_the_files_order_not_the_order_parts_end(self):
+        doc = {"parts": [part("p1", run="sleep 1.5"), part("p2"), part("p3", run="sleep 0.5")]}
+        r = self.run_parts(doc, "--jobs", "3")
+        t = self.progress()["times"]
+        self.assertLess(t["p2"]["end"], t["p3"]["end"], t)
+        self.assertLess(t["p3"]["end"], t["p1"]["end"], "the counterfactual: they ended p2, p3, p1")
+        self.assertEqual([line[:8] for line in r.stdout.splitlines()[:3]], ["ok    p1", "ok    p2", "ok    p3"], r.stdout)
+        r = self.run_parts(doc, "--jobs", "3", "--json")
+        self.assertEqual([c["name"] for c in json.loads(r.stdout)["checks"]], ["p1", "p2", "p3"])
+
+    def test_a_failing_part_stops_no_other(self):
+        doc = {"parts": [part("p1", run="exit 1"), part("p2", run="sleep 0.5; touch p2.ran"),
+                         part("p3", run="touch p3.ran"), part("p4", run="exit 4", uses=["serial"]),
+                         part("p5", run="touch p5.ran")]}
+        r = self.run_parts(doc, "--jobs", "2", "--json")
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual([c["status"] for c in json.loads(r.stdout)["checks"]], ["fail", "ok", "ok", "fail", "ok"])
+        self.assertEqual(sorted(p.name for p in self.base.glob("*.ran")), ["p2.ran", "p3.ran", "p5.ran"])
+
+    def mixed(self):
+        """A red suite of every kind of result, for comparing two runners' words."""
+        return {"defaults": {"role": "code"}, "parts": [
+            part("p1"), part("p2", run="echo 'FAIL: test_x (y)'; echo two; exit 1"),
+            part("p3", run="echo 'no sibling'; exit 3"), part("p4", run="sleep 0.3", uses=["serial"]),
+            part("p5", run="echo last words; exit 4", files=["b.txt"]), part("p6", run="sleep 5", timeout_s=1)]}
+
+    @staticmethod
+    def words(out):
+        """The run's words, its seconds and its `time:` line left out."""
+        return [re.sub(r"\b\d+s\b", "Ns", line) for line in out.splitlines() if not line.startswith("time: ")]
+
+    def test_jobs_1_says_what_a_pool_says(self):
+        one, many = self.run_parts(self.mixed(), "--jobs", "1"), self.run_parts(self.mixed(), "--jobs", "6")
+        self.assertEqual((one.returncode, self.words(one.stdout)), (many.returncode, self.words(many.stdout)))
+        self.assertIn("check: 2 of 6 passed; failed: p2 ", one.stdout)
+        one, many = (self.run_parts(self.mixed(), "--jobs", j, "--json") for j in ("1", "6"))
+        self.assertEqual(json.loads(one.stdout), json.loads(many.stdout))
+
+    def test_jobs_1_says_what_the_one_at_a_time_runner_said(self):
+        """1.3.0 ran parts one at a time; --jobs 1 prints the same lines, the
+        `time:` line apart, for a suite of every kind of result, and resumes."""
+        p = subprocess.run(["git", "-C", str(TOOL_ROOT), "show", f"{ONE_AT_A_TIME}:checkslib/parts.py"],
+                           capture_output=True, text=True)
+        if p.returncode:
+            self.skipTest(f"the 1.3.0 runner ({ONE_AT_A_TIME}) is not in this clone: {p.stderr.strip()}")
+        old = write(self.tmp / "old" / "parts.py", p.stdout)
+        doc = self.mixed()
+        for p in doc["parts"]:
+            p.pop("uses", None)         # 1.3.0 refuses the key it never knew
+        path = write(self.base / "parts.json", json.dumps(doc))
+
+        def by(runner, *flags):
+            e = dict(os.environ, PROGRESS_FILE=str(self.pf))
+            r = subprocess.run([sys.executable, str(runner), "run", str(path), *flags], capture_output=True,
+                               text=True, env=e, stdin=subprocess.DEVNULL, timeout=120)
+            return r.returncode, self.words(r.stdout), r.stdout.count("\ntime: ")
+
+        was, now = by(old), by(PARTS, "--jobs", "1")
+        self.assertEqual((was[2], now[2]), (0, 1), "only the new runner says a time line")
+        self.assertEqual(was[:2], now[:2])
+        self.assertEqual(by(old, "--resume")[:2], by(PARTS, "--resume", "--jobs", "1")[:2])
+        self.assertEqual(by(old, "--json")[:2], by(PARTS, "--json", "--jobs", "1")[:2])
+
+    def test_the_time_line_moves_with_its_inputs(self):
+        line = re.compile(r"time: ([\d.]+)s wall, ([\d.]+)s summed over (\d+) part\(s\) run \(--jobs (\d+)\), "
+                          r"(\d+)% of it in serial parts\Z")
+
+        def said(doc, jobs):
+            out = self.run_parts(doc, "--jobs", jobs).stdout.splitlines()
+            m = line.match(out[-2])
+            self.assertIsNotNone(m, out)
+            return float(m[1]), float(m[2]), int(m[3]), int(m[4]), int(m[5])
+
+        def doc(u1):
+            return {"parts": [part("p1", run="sleep 1", uses=u1), part("p2", run="sleep 1")]}
+        wall, summed, ran, jobs, share = said(doc([]), "2")
+        self.assertEqual((ran, jobs, share), (2, 2, 0))
+        self.assertGreaterEqual(summed, 2.0)
+        self.assertLess(wall, 1.9, "two parts at once: the wall is less than the sum")
+        wall, summed, ran, jobs, share = said(doc(["serial"]), "2")
+        self.assertGreaterEqual(wall, 2.0, "a serial part runs alone")
+        self.assertTrue(40 <= share <= 60, share)
+        self.assertEqual(said(doc([]), "1")[3], 1)
+        st = self.progress()
+        self.assertTrue(st["wall_s"] >= 2.0 and st["parts_s"] >= 2.0 and st["serial_s"] == 0, st)
+        self.run_parts({"parts": [part("p1")]})
+        r = self.run_parts({"parts": [part("p1")]}, "--resume", "--jobs", "3")
+        self.assertIn("time: ", r.stdout)
+        self.assertIn("no part ran (--jobs 3)", r.stdout.splitlines()[-2])
 
     # ---- resume ------------------------------------------------------------
 
@@ -306,14 +497,14 @@ class Parts(Case):
         self.assertEqual([(x["name"], x["status"], x["counts"].get("skipped")) for x in c],
                          [("p1", "ok", 1), ("p2", "ok", 1), ("p3", "fail", None)])
         self.assertEqual(checkjson.validate(r.stdout, r.returncode), [])
-        self.assertEqual(self.progress()["passed_steps"], ["p1", "p2"], "a skipped part is still passed")
+        self.assertEqual(sorted(self.progress()["passed_steps"]), ["p1", "p2"], "a skipped part is still passed")
         (self.base / "ran").unlink()
         write(self.base / "b.txt", "changed\n")
         self.run_parts(doc, "--resume")
-        self.assertEqual((self.base / "ran").read_text().split(), ["p2", "p3"], "an edit reruns the parts that read it")
+        self.assertEqual(sorted((self.base / "ran").read_text().split()), ["p2", "p3"], "an edit reruns the parts that read it")
         (self.base / "ran").unlink()
         self.run_parts(doc)
-        self.assertEqual((self.base / "ran").read_text().split(), ["p1", "p2", "p3"], "no --resume runs everything")
+        self.assertEqual(sorted((self.base / "ran").read_text().split()), ["p1", "p2", "p3"], "no --resume runs everything")
 
     def test_an_always_part_is_never_skipped(self):
         doc = {"parts": [part("p1", run="echo p1 >> ran"), part("p2", run="echo p2 >> ran", files=[], always="why")]}
@@ -392,7 +583,12 @@ class Parts(Case):
         for flags, said in [(("--only", "nope"), "--only nope: no part of that name"),
                             (("--only",), "--only needs a part name"),
                             (("--only", "p1", "--resume"), "--only and --resume together"),
-                            (("--bogus",), "unknown option --bogus")]:
+                            (("--bogus",), "unknown option --bogus"),
+                            (("--jobs", "0"), "--jobs needs a whole number above 0, not '0'"),
+                            (("--jobs", "two"), "--jobs needs a whole number above 0, not 'two'"),
+                            (("--jobs", "-1"), "--jobs needs a whole number above 0, not '-1'"),
+                            (("--jobs",), "--jobs needs a whole number above 0, not ''"),
+                            (("--jobs", "2", "--jobs", "2"), "--jobs given twice")]:
             r = self.run_parts(doc, *flags)
             self.assertEqual(r.returncode, 2, flags)
             self.assertIn(said, r.stderr, flags)
@@ -420,17 +616,17 @@ class Parts(Case):
         doc = json.loads(p.stdout)
         self.assertEqual((doc["version"], doc["commands"]), (parts.VERSION, sorted(parts.COMMANDS)))
         run = doc["run"]
-        self.assertEqual([o["flag"] for o in run["options"]], ["--resume", "--only", "--json"])
+        self.assertEqual([o["flag"] for o in run["options"]], ["--resume", "--only", "--jobs", "--json"])
         self.assertIn(f"  {run['usage']}\n", parts.__doc__, "the docstring's run line is the built one")
-        self.assertEqual(run["usage"], "parts.py run <parts.json> [--resume | --only <name>...] [--json]")
+        self.assertEqual(run["usage"], "parts.py run <parts.json> [--resume | --only <name>...] [--jobs <n>] [--json]")
         for o in run["options"]:
-            words = [o["flag"]] + (["a"] if o["value"] else [])
+            words = [o["flag"]] + (["1"] if o["value"] else [])
             with self.subTest(flag=o["flag"]):
                 self.assertIsNone(parts.options(words * (2 if o["repeatable"] else 1))[2])
                 if o["value"]:
                     self.assertIsNotNone(parts.options([o["flag"]])[2], "a valued flag needs its value")
         for a, b in run["exclusive"]:
-            words = [w for f in (a, b) for w in ([f] + (["a"] if parts.RUN_OPTIONS[f] else []))]
+            words = [w for f in (a, b) for w in ([f] + (["1"] if parts.RUN_OPTIONS[f] else []))]
             self.assertIsNotNone(parts.options(words)[2], (a, b))
         self.assertIn("unknown option --quick", parts.options(["--quick"])[2])
         p = subprocess.run([sys.executable, str(PARTS), "usage"], capture_output=True, text=True)
@@ -494,10 +690,10 @@ class ThisRepo(Case):
         p = subprocess.run([str(TOOL_ROOT / "dev.sh"), "test", "p3", "p1"], capture_output=True, text=True,
                            env=env, stdin=subprocess.DEVNULL, timeout=120)
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
-        self.assertEqual((base / "ran").read_text().split(), ["p1", "p3"])
+        self.assertEqual(sorted((base / "ran").read_text().split()), ["p1", "p3"])
         self.assertEqual(p.stdout.splitlines()[-1], "check: 2 of 2 passed; not run: 1 (--only)")
         st = json.loads(pf.read_text())
-        self.assertEqual((st["only"], st["passed_steps"]), (["p1", "p3"], ["p1", "p3"]))
+        self.assertEqual((st["only"], sorted(st["passed_steps"])), (["p1", "p3"], ["p1", "p3"]))
 
     def test_the_progress_folder_is_ignored_by_git(self):
         p = subprocess.run(["git", "-C", str(TOOL_ROOT), "check-ignore", "-q", ".progress/check.json"])

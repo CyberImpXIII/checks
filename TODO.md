@@ -62,14 +62,33 @@
   each alone turning only its scenario red; tests/test_check_partial.py ~135s).
   checkslib/devjson.py removed (its one caller was dev.sh). `--only <part>`
   built 2026-10-12 (VERSION 1.1.0, 5bce6b6; `./dev.sh test <part>`). Not
-  built yet: §3.5 `check --quick`; parts run one at a time (no parallel
-  parts). Known limits, by design and in the header: the hash is a
+  built yet: §3.5 `check --quick`. Known limits, by design and in the header: the hash is a
   CLAIM (a part reading an undeclared file resumes wrongly; `always` for
   parts whose inputs no `files` can name: rules_in_sync, no_secrets,
   rules_gated, contract, run); the environment is not in the hash (only
   PARTS_RUNTIME / the python version). Not gated: that each test part's
   `files` really covers what it reads (they declare the whole repo minus
   the other test files, so wide on purpose).
+- Check parts in parallel (PLAN-check-progress.md §10 step 1, tl-360,
+  2026-10-19): parts.py 1.4.0 runs parts in a pool (`--jobs <n>`, default the
+  CPU count; a thread per running part, only the main thread writes the
+  progress file), a part's `uses` (browser | serial | store:<name>, not in the
+  hash) keeps two parts sharing a value apart and a `serial` part alone and a
+  barrier; text and --json in the file's order whatever order parts end; TERM
+  stops every running tree. tests/test_parts.py holds each with its
+  counterfactual (mutants run by hand: no blocking, --jobs ignored, no serial
+  barrier, a fail stopping launches -- each turned its test red), and
+  `--jobs 1` against the 1.3.0 runner (c1a4a6e) word for word. Open: step 2
+  (each owner marks its serial parts) and setup reinstalling devtools/parts.py
+  1.4.0 in every repo (reported to setup). Not gated: that a part's `uses` is
+  TRUE (a part touching a shared store without saying so races silently) --
+  the same CLAIM limit as `files`.
+  DECISION for Jacob: the plan says the timing goes on "the summary line"; it
+  is a separate `time: <wall>s wall, <sum>s summed over k part(s) run (--jobs
+  n), p% of it in serial parts` line just before it, because the summary
+  line is read exactly by consumers (tools/todo test_hooks_gate splits it on
+  ";", addon-bench matches `^check: 3 of 3 passed$`, check-partial's SUMMARY
+  regex). Say if it should move onto the line anyway.
 - `./dev.sh check` 2026-10-12, run 1: "18 of 20 passed; failed: test.meta;
   test.contract". `run` (hooks-installed) is now OK: setup's 2026-10-10
   re-render of the hook copies is committed (532b54d; `hooks copies --gate
