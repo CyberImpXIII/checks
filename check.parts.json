@@ -25,6 +25,8 @@
    "always": "runs rules-gated on the workspace top, whose gates.json rows name files across every repo"},
   {"name": "test.practices", "run": "python3 -m unittest tests.test_practices", "files": ["tests/test_practices.py"], "except": ["tests/", "TODO.md"],
    "always": "validates the real practice rows against the workspace, whose PLAN files, CLAUDE.md files and repos' gates.json their sources name"},
+  {"name": "test.ledger", "run": "python3 -m unittest tests.test_ledger", "files": ["tests/test_ledger.py", "tests/test_practices.py"], "except": ["tests/", "TODO.md"],
+   "always": "holds checkslib/sqlstore.py equal to tools/todo's todolib/sqlstore.py, which another repo changes"},
   {"name": "test.check_json", "run": "python3 -m unittest tests.test_check_json", "files": ["tests/test_check_json.py"], "except": ["tests/", "TODO.md"]},
   {"name": "test.check_partial", "run": "python3 -m unittest tests.test_check_partial", "files": ["tests/test_check_partial.py"], "except": ["tests/", "TODO.md"], "timeout_s": 900},
   {"name": "test.contract", "run": "python3 -m unittest tests.test_contract", "files": ["tests/test_contract.py"], "except": ["tests/", "TODO.md"], "timeout_s": 900,

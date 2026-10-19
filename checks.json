@@ -1,3 +1,12 @@
 {
- "no-roster": {"exclude": ["gates.json"]}
+  "no-roster": {
+    "exclude": [
+      "gates.json"
+    ]
+  },
+  "accessor": {
+    "impl": [
+      "checkslib/ledger.py"
+    ]
+  }
 }

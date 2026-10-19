@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-from checkslib import api, decl, practices, registry, runner, selftest, stores, writers
+from checkslib import api, decl, ledger, practices, registry, runner, selftest, stores, writers
 
 USAGE = """checks <command>   the generic pre-commit gates, one source, run per repo or from the top
 
@@ -37,6 +37,19 @@ USAGE = """checks <command>   the generic pre-commit gates, one source, run per 
                                      --import FILE: the rows of a PRACTICES-rows.md into gates.json,
                                      blocked ids left out, recorded cells kept;
                                      --registry FILE / --baseline FILE: others than this repo's (tests)
+  checks ledger record [PATH] [--check FILE]
+                                     the assurance ledger (PLAN-architecture.md §6a): one run of the repo
+                                     at PATH into this repo's SQLite store: its gates (run now, with
+                                     source and fixtures), the tests and audits of a saved `dev.sh check
+                                     --json` (--check), its test files (run | not run | unnamed by
+                                     check.parts.json), its practice cells; exit 0 recorded, 2 refused
+  checks ledger justify ROW [PATH] --text T --author A (--file F --line N [--commit C] | --command C --output FILE)
+                                     a justification of practice row ROW in that repo, with its evidence
+                                     pointer; no pointer, no record (exit 2)
+  checks ledger show [PATH] [--json] the newest run's lists and the justifications, each one's staleness
+                                     read now (stale: its file changed since its commit); exit 2: no run
+  checks ledger export --out DIR     each table's static export (header, seal, 0444) into DIR
+                                     (--db FILE on any of these: another store than this repo's, tests)
 
   --root DIR         the workspace top (default: two up, when this tool sits in tools/;
                      else none, and checks that need one say UNCHECKED)
@@ -370,9 +383,115 @@ def cmd_practices(a):
     return rc
 
 
+def _ledger_args(argv):
+    p = argparse.ArgumentParser(prog="checks ledger")
+    sub = p.add_subparsers(dest="action", required=True)
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--db", help="another store than this repo's (tests)")
+    common.add_argument("--root")
+    common.add_argument("--source", type=Path, default=runner.DEFAULT_SOURCE)
+    r = sub.add_parser("record", parents=[common])
+    r.add_argument("path", nargs="?")
+    r.add_argument("--check", dest="check_file")
+    r.add_argument("--names")
+    r.add_argument("--registry")
+    j = sub.add_parser("justify", parents=[common])
+    j.add_argument("row")
+    j.add_argument("path", nargs="?")
+    j.add_argument("--text", required=True)
+    j.add_argument("--author", required=True)
+    j.add_argument("--file")
+    j.add_argument("--line", type=int)
+    j.add_argument("--commit")
+    j.add_argument("--command")
+    j.add_argument("--output", dest="output_file")
+    j.add_argument("--registry")
+    s = sub.add_parser("show", parents=[common])
+    s.add_argument("path", nargs="?")
+    s.add_argument("--json", action="store_true")
+    e = sub.add_parser("export", parents=[common])
+    e.add_argument("--out", required=True)
+    return p.parse_args(argv)
+
+
+def cmd_ledger(argv):
+    """The assurance ledger (PLAN-architecture.md §6a, §9 step 6); the store and
+    every rule are checkslib/ledger.py's."""
+    a = _ledger_args(argv)
+    ws = _ws(a)
+    try:
+        db = ledger.open_db(a.db)
+    except ledger.STORE_ERRORS as e:
+        print(f"checks ledger: the store does not open: {e}", file=sys.stderr)
+        return 2
+    with db:
+        try:
+            if a.action == "record":
+                text = None
+                if a.check_file:
+                    try:
+                        text = Path(a.check_file).read_text()
+                    except OSError as e:
+                        raise ledger.Refused(f"--check {a.check_file}: unreadable ({e})")
+                repo = Path(a.path or ".")
+                run_id, items, notes = ledger.record(repo, ws, db, text, a.check_file, a.source, _names(a),
+                                                     Path(a.registry) if a.registry else None)
+                by = {l: ledger.counts([i for i in items if i["list"] == l]) for l in ledger.LISTS}
+                said = "; ".join(f"{l} " + (", ".join(f"{n} {s}" for s, n in sorted(c.items())) or "none")
+                                 for l, c in by.items())
+                print(f"checks ledger record {ledger.repo_key(repo, ws)}: run {run_id}: {said}"
+                      + "".join(f"\n  not recorded: {k}: {v}" for k, v in sorted(notes.items())))
+                return 0
+            if a.action == "justify":
+                output = None
+                if a.output_file is not None:
+                    try:
+                        output = Path(a.output_file).read_text()
+                    except OSError as e:
+                        raise ledger.Refused(f"--output {a.output_file}: unreadable ({e})")
+                jid = ledger.justify(db, a.row, Path(a.path or "."), ws, a.text, a.author, a.file, a.line,
+                                     a.commit, a.command, output, Path(a.registry) if a.registry else None)
+                print(f"checks ledger justify: record {jid}: {a.row} in {ledger.repo_key(Path(a.path or '.'), ws)}")
+                return 0
+            if a.action == "show":
+                rep = ledger.show(db, Path(a.path or "."), ws)
+                if a.json:
+                    print(json.dumps(rep, indent=1))
+                    return 0 if rep["run"] else 2
+                if rep["run"] is None:
+                    print(f"checks ledger show {rep['repo']}: no run recorded (checks ledger record)")
+                    return 2
+                run = rep["run"]
+                dirty = {1: " +uncommitted", 0: "", None: " (dirty: unknown)"}[run["dirty"]]
+                print(f"run {run['id']} at {run['at']}, commit {(run['commit_sha'] or 'none')[:12]}{dirty}")
+                for l, its in rep["lists"].items():
+                    c = ledger.counts(its)
+                    print(f"  {l:<9} " + (", ".join(f"{n} {s}" for s, n in sorted(c.items())) or "none"))
+                    for it in its:
+                        if it["status"] not in ("ok", "held", "run", "justified"):
+                            print(f"      {it['status']:<11} {it['name']}  {(it['detail'] or '')[:120]}")
+                for k, v in sorted(run["notes"].items()):
+                    print(f"  not recorded: {k}: {v}")
+                for j in rep["justifications"]:
+                    st = {True: "STALE", False: "fresh", None: "stale?"}[j["stale"]]
+                    print(f"  justification {j['id']} {j['row_id']} by {j['author']} ({st}: {j['stale_why']})")
+                return 0
+            if a.action == "export":
+                wrote = ledger.export(db, a.out)
+                print(f"checks ledger export: {', '.join(f'{f} {n} bytes' for f, n in sorted(wrote.items()))} in {a.out}")
+                return 0
+        except ledger.Refused as e:
+            print(f"checks ledger {a.action}: REFUSED: {e}", file=sys.stderr)
+            return 2
+        except ledger.STORE_ERRORS as e:    # the schema refused a write: nothing of it was kept
+            print(f"checks ledger {a.action}: the store refused it: {e.__class__.__name__}: {e}", file=sys.stderr)
+            return 2
+    return 2
+
+
 COMMANDS = {"list": cmd_list, "explain": cmd_explain, "run": cmd_run, "one": cmd_one,
             "all": cmd_all, "fixtures": cmd_fixtures, "writers": cmd_writers, "stores": cmd_stores,
-            "tools": cmd_tools, "practices": cmd_practices}
+            "tools": cmd_tools, "practices": cmd_practices, "ledger": cmd_ledger}
 
 
 def main(argv):
@@ -382,6 +501,8 @@ def main(argv):
     if argv[0] not in COMMANDS:
         print(f"unknown command: {argv[0]}\n\n{USAGE}", end="", file=sys.stderr)
         return 2
+    if argv[0] == "ledger":
+        return cmd_ledger(argv[1:])
     p = argparse.ArgumentParser(prog=f"checks {argv[0]}")
     p.add_argument("--source", type=Path, default=runner.DEFAULT_SOURCE)
     p.add_argument("--json", action="store_true")

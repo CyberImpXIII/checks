@@ -275,6 +275,29 @@
 
 ## Open decisions
 
+- Assurance ledger (tl-321, 2026-10-19, PLAN-architecture.md §6a, §9 step 6):
+  built as `checks ledger` over `state/ledger.db` (checkslib/ledger.py,
+  tests/test_ledger.py). Open around it:
+  - not wired: no repo's `dev.sh check` calls `checks ledger record` yet, this
+    one included. Wiring is per repo (setup's template or each owner), and
+    `record` runs every gate again (about 12 s here), so it belongs after the
+    suite with `--check <saved --json>`; decide where before rolling out.
+  - the ratchet (`checks practices`) does not read justification records yet:
+    only the ledger's own practice list applies them (practices.cells'
+    `overrides`). Folding them in means the ratchet reading this store.
+  - ids are plain integers: §6a says "a new namespace needs Jacob", so the
+    id prefix (and whether runs/items/justifications get one each) is his.
+  - not exported: cli.json's `not_exported` names it (so stores-exported is
+    ok); hub view (step 7) decides whether the justifications go to the data
+    repo, then it needs a `verify` verb and `checks ledger export` wired.
+  - checkslib/sqlstore.py is a COPY of tools/todo's, held equal by
+    test_ledger.SqlstoreCopy (AST, docstring left out) until setup's step
+    10.2 render replaces it; reported to setup (below).
+  - `unnamed` test files here: the 12 `.claude/hooks/test-*.sh` copies are
+    run by no part of this repo (tools/hooks runs its sources); the ledger
+    says unnamed (not `not run`) because the `fixtures`, `run` and `audit`
+    parts are commands it cannot read.
+
 - stores-classified (tl-269, 2026-10-18, PLAN-services.md §4 step 10.3):
   built as `roles:lag` with `checks stores` as the workspace report. First
   report (`./checks stores`): 26 stores in 7 of 20 locations, 0 dynamic,
@@ -495,6 +518,15 @@
 
 
 ## Reported to other owners
+
+- setup (2026-10-19, tl-321, settles su-89 / tl-307): practice rows are
+  gates.json `practices.rows[].id` (102 rows); `rules[].id` (38) are the
+  CLAUDE.md section rows, and 12 ids exist in both by design. setup's
+  setuplib/practices.py resolves `## Practices` ids against `rules[].id`
+  only, so no-duplicate-procedure, output-small etc. fail as unresolved.
+  Expected: resolve against `practices.rows[].id` (and `blocked[].id` if
+  wanted), keep `rules[].id` for a decision's `gate:` rows. Also: checks
+  holds a copy of todo's sqlstore.py pending step 10.2.
 
 - usage (2026-10-18, tl-269): unverified: its cli.json's `~/.claude/usage/*`
   store entries are read by every check as `<repo>/~/...` (never expanded),

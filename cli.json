@@ -1,6 +1,44 @@
 {
-  "_comment": "This repo's CLI and verbs (PLAN-architecture.md §12.1); it keeps no store. `list` and `writers` are the read verbs: `run`/`all`/`one`/`fixtures` run checks (repro among them), so they are not declared here; `stores` and `tools` read but walk the whole workspace, which repro would do twice pre-commit, so they are not declared either; `practices` runs the checks its rows name across the whole workspace (and `--import`/`--lower` write gates.json and the baseline), so it is not a read verb.",
+  "_comment": "This repo's CLI and verbs (PLAN-architecture.md §12.1), and its one store: the assurance ledger (PLAN-architecture.md §6a, §9 step 6), a dynamic SQLite store written only by `checks ledger` (checkslib/ledger.py, accessor's `impl`), gitignored under state/. `list` and `writers` are the read verbs: `run`/`all`/`one`/`fixtures` run checks (repro among them), so they are not declared here; `stores` and `tools` read but walk the whole workspace, which repro would do twice pre-commit, so they are not declared either; `practices` runs the checks its rows name across the whole workspace (and `--import`/`--lower` write gates.json and the baseline), so it is not a read verb; `ledger` writes its store (record, justify) and its `show` reads git live (staleness), so it is not one either.",
   "cli": "checks",
-  "verbs": ["list", "explain", "run", "one", "all", "fixtures", "writers", "stores", "tools", "practices"],
-  "read": {"verbs": {"list": {"args": ["--json"]}, "writers": {"args": ["--json"]}}}
+  "store": [
+    "state/ledger.db"
+  ],
+  "verbs": [
+    "list",
+    "explain",
+    "run",
+    "one",
+    "all",
+    "fixtures",
+    "writers",
+    "stores",
+    "tools",
+    "practices",
+    "ledger"
+  ],
+  "kinds": {
+    "state/ledger.db": {
+      "kind": "dynamic",
+      "schema_version": 1,
+      "export": "ledger"
+    }
+  },
+  "read": {
+    "verbs": {
+      "list": {
+        "args": [
+          "--json"
+        ]
+      },
+      "writers": {
+        "args": [
+          "--json"
+        ]
+      }
+    }
+  },
+  "not_exported": {
+    "state/ledger.db": "not exported yet: its runs are re-derived by each repo's `dev.sh check` (a local cache of git and the checks), but its justifications are authored records that live only here until the hub view (PLAN-architecture.md §9 step 7) settles what the data repo holds; `checks ledger export --out` writes the static export (TODO.md \"Assurance ledger\")"
+  }
 }

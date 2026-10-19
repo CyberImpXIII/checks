@@ -483,10 +483,12 @@ def where(row, locs):
     return list(locs) if row.get("applies") == "all" else list(row.get("applies") or [])
 
 
-def _cell(row, loc, locs, results):
+def _cell(row, loc, locs, results, over=None):
+    """`over`: a cell the ledger built from a justification record (justified,
+    or unjustified and `stale`), used where a recorded cell would be, and over it."""
     h = row.get("held") or {}
     kind = h.get("kind")
-    rec = (row.get("cells") or {}).get(loc)
+    rec = over or (row.get("cells") or {}).get(loc)
     decided = False
     if kind == "gate":
         name = check_of(row)
@@ -523,18 +525,22 @@ def _cell(row, loc, locs, results):
         if decided or kind == "unbuilt":
             cell["note"] = f"recorded {rec['state']} not used: " + ("the check decided" if decided else "the row is unbuilt")
         else:
-            cell = {"state": rec["state"], "why": rec["why"], "recorded": True}
+            cell = dict(over, recorded=True) if over else {"state": rec["state"], "why": rec["why"], "recorded": True}
     return cell
 
 
-def cells(rows, locs, results):
+def cells(rows, locs, results, overrides=None):
     """{row id: {location: cell}} for every live row, principles rolled up from
-    their supporting rows. `results`: {location: {check: {status, lines}}}."""
+    their supporting rows. `results`: {location: {check: {status, lines}}}.
+    `overrides`: {(row id, location): cell} from the ledger's justification
+    records (checkslib/ledger.py), taking a recorded cell's place."""
     out = {}
+    overrides = overrides or {}
     rows = live(rows)
     for r in rows:
         if r.get("part") != "A":
-            out[r["id"]] = {loc: _cell(r, loc, locs, results) for loc in where(r, locs)}
+            out[r["id"]] = {loc: _cell(r, loc, locs, results, overrides.get((r["id"], loc)))
+                            for loc in where(r, locs)}
     for p in rows:
         if p.get("part") != "A":
             continue
@@ -594,23 +600,33 @@ def run_live(rows, ws, source=runner.DEFAULT_SOURCE, names=None, workers=8):
     locs = [runner.rel(r, ws) for r in repos]
 
     def one(repo):
-        loc = runner.rel(repo, ws)
-        wanted = {check_of(r) for r in live(rows) if check_of(r) and loc in where(r, locs)}
-        runs, skip = [], {}
-        for n in sorted(wanted):
-            e = entries.get(n)
-            if e is None:
-                skip[n] = {"check": n, "status": "error", "lines": ["no such check in the source"]}
-            elif runner.applies(e, repo, ws, LAG):
-                runs.append(n)
-            else:
-                skip[n] = {"check": n, "status": "not-run", "lines": [f"applies_to={e.applies_to}"]}
-        got = runner.run_repo(repo, source, ws, names, LAG, runs)["results"] if runs else []
-        return loc, dict(skip, **{r["check"]: r for r in got})
+        return runner.rel(repo, ws), run_location(rows, repo, ws, locs, source, names, entries)
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
         results = dict(pool.map(one, repos))
     return locs, results
+
+
+def run_location(rows, repo, ws, locs, source=runner.DEFAULT_SOURCE, names=None, entries=None):
+    """{check: result} at one location: the checks the live rows name there,
+    each where its applies_to (roles:lag included) selects it; a named check
+    that does not apply there is `not-run`, said. run_live's per-location step,
+    and the ledger's (checkslib/ledger.py), so both read one location alike."""
+    if entries is None:
+        entries = {e.name: e for e in decl.load(source)[0]}
+    loc = runner.rel(repo, ws)
+    wanted = {check_of(r) for r in live(rows) if check_of(r) and loc in where(r, locs)}
+    runs, skip = [], {}
+    for n in sorted(wanted):
+        e = entries.get(n)
+        if e is None:
+            skip[n] = {"check": n, "status": "error", "lines": ["no such check in the source"]}
+        elif runner.applies(e, repo, ws, LAG):
+            runs.append(n)
+        else:
+            skip[n] = {"check": n, "status": "not-run", "lines": [f"applies_to={e.applies_to}"]}
+    got = runner.run_repo(repo, source, ws, names, LAG, runs)["results"] if runs else []
+    return dict(skip, **{r["check"]: r for r in got})
 
 
 # ---------------------------------------------------------------- ratchet
