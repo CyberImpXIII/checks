@@ -460,6 +460,17 @@
 
 ## Unconfirmed suspicions
 
+- test.contract red (2026-10-19, tl-321): WithHooks.
+  test_hooks_installed_follows_the_real_user_scope_report's pin expects hooks'
+  support split {ledger.sh: True, extra-stores.sh: True, write-targets.sh:
+  False, commit.sh: False}; the fixture run now gives ledger.sh and
+  write-targets.sh `covered: null`. It fails the same with tl-321's changes
+  stashed (run: `python3 -m unittest tests.test_contract.WithHooks.
+  test_hooks_installed_follows_the_real_user_scope_report`), so it is not the
+  ledger. Unverified cause: tools/hooks has uncommitted `.claude/settings.json`
+  work, and this repo's `.claude/lib/ledger.sh` copy drifted (uncommitted, not
+  ours). Settle the pin with tools/hooks once their work lands; reported.
+
 - Top `.claude/cli.json` (settled for cli-declared 2026-10-13, harness's
   path): `contract.cli_home` reads it for a non-git folder with no cli.json
   whose .claude is a git repo; `checks one cli-declared ../..` is OK (15
