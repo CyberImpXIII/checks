@@ -84,6 +84,17 @@ def live(rows):
     return [r for r in rows if isinstance(r, dict) and r.get("status") == "live"]
 
 
+SHOWN = ("id", "part", "principle", "status", "held", "applies")
+
+
+def shown(row):
+    """A row as `checks practices --json` prints it, and `--rows --json` (no
+    run) alike: the SHOWN keys it has. A measured run adds `counts` and `cells`
+    to a live row; the rows view never does, and never prints a row's recorded
+    `cells` either (tests/test_practices.py RowsView holds the two equal)."""
+    return {k: row.get(k) for k in SHOWN if k in row}
+
+
 # ---------------------------------------------------------------- validating
 
 def _plan_ok(ws, f, sec):

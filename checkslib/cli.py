@@ -32,6 +32,9 @@ USAGE = """checks <command>   the generic pre-commit gates, one source, run per 
                                      blocked on Jacob's decisions, and the ratchet: exit 0 at or under
                                      practices-baseline.json, 1 above it, 2 when it cannot say
                                      (PLAN-services.md §3 A2); --row ID: one row's cells with why;
+                                     --rows: the rows alone (id, part, principle, status, held,
+                                     applies), read and validated, no check run, no cells or ratchet
+                                     (--row ID: that one row, live or not); exit 0, 2 unreadable/invalid;
                                      --from FILE: a saved `checks all --json` instead of running;
                                      --lower: write a lower count as the baseline (a higher is refused);
                                      --import FILE: the rows of a PRACTICES-rows.md into gates.json,
@@ -284,11 +287,75 @@ def _short(locs, n=6):
     return ", ".join(locs[:n]) + (f" +{len(locs) - n}" if len(locs) > n else "")
 
 
+def _held_said(r):
+    h = r.get("held") or {}
+    what = h.get("kind", "-") + (f" {h['gate']}" if h.get("gate") else "")
+    if h.get("check") or h.get("via"):
+        what += f" [{practices.check_of(r)}]"
+    return what
+
+
+def _registry(a, reg, prog, what):
+    """(block, ws, notes) of a readable, valid registry, or (None, ws, None)
+    having said why on stderr: nothing is read from an invalid one."""
+    block, faults = practices.load(reg)
+    ws = Path(a.path).resolve() if a.path else _ws(a)
+    if block is None:
+        print(f"{prog}: {faults[0]}", file=sys.stderr)
+        return None, ws, None
+    findings, notes = practices.validate(block, ws if ws and ws.is_dir() else None, a.source)
+    if findings:
+        for f in findings:
+            print(f"  INVALID  {f}", file=sys.stderr)
+        print(f"{prog}: the registry has {len(findings)} finding(s) (checks one practices-valid); "
+              f"no {what} from an invalid registry", file=sys.stderr)
+        return None, ws, None
+    return block, ws, notes
+
+
+ROWS_REFUSES = (("from_report", "--from"), ("lower", "--lower"), ("import_md", "--import"),
+                ("baseline", "--baseline"), ("names", "--names"))
+
+
+def cmd_practices_rows(a, reg):
+    """`checks practices --rows`: the registry's rows as the measured run prints
+    them, read from gates.json and validated, with no check run, no cells, no
+    counts and no ratchet (todo's brief reads only these). Exit 0 printed, 2 not."""
+    given = [flag for attr, flag in ROWS_REFUSES if getattr(a, attr)]
+    if given:
+        print(f"checks practices --rows: {', '.join(given)} would be ignored (the rows view runs nothing, "
+              f"reads no report and writes nothing); drop it, or drop --rows", file=sys.stderr)
+        return 2
+    block, _, notes = _registry(a, reg, "checks practices --rows", "rows")
+    if block is None:
+        return 2
+    rows = block["rows"]
+    if a.row:
+        rows = [r for r in rows if r["id"] == a.row]
+        if not rows:
+            print(f"checks practices --rows: no row '{a.row}'", file=sys.stderr)
+            return 2
+    if a.json:
+        print(json.dumps({"rows": [practices.shown(r) for r in rows], "blocked": block.get("blocked", []),
+                          "notes": notes}, indent=1))
+        return 0
+    for r in rows:
+        ap = r.get("applies")
+        ap = ap if isinstance(ap, str) else _short(ap or [])
+        print(f"  {r['id']:<30} {r.get('status', '')[:24]:<24} {_held_said(r)[:58]:<58} applies {ap}")
+    print(f"\nchecks practices --rows ({reg.name}, not measured: no check run): {len(rows)} row(s), "
+          f"{len(practices.live(rows))} live, {len(block.get('blocked', []))} blocked"
+          + ("; " + notes[0] if notes else ""))
+    return 0
+
+
 def cmd_practices(a):
     """The practice rows (PLAN-services.md §3 A2, §4 step 7.2): each row with
     its gate and status, its cells in the four states, and the ratchet.
     Exit 0 at or under the baseline, 1 above it, 2 when it cannot say."""
     reg = Path(a.registry) if a.registry else practices.REGISTRY
+    if a.rows:
+        return cmd_practices_rows(a, reg)
     if a.import_md:
         summary, problems = practices.import_md(a.import_md, reg)
         for p in problems:
@@ -299,17 +366,8 @@ def cmd_practices(a):
               f"({summary['live']} live, {summary['not_live']} superseded or retired), {summary['blocked']} blocked "
               f"left out; run `checks one practices-valid .` next")
         return 0
-    block, faults = practices.load(reg)
+    block, ws, notes = _registry(a, reg, "checks practices", "cells")
     if block is None:
-        print(f"checks practices: {faults[0]}", file=sys.stderr)
-        return 2
-    ws = Path(a.path).resolve() if a.path else _ws(a)
-    findings, notes = practices.validate(block, ws if ws and ws.is_dir() else None, a.source)
-    if findings:
-        for f in findings:
-            print(f"  INVALID  {f}", file=sys.stderr)
-        print(f"checks practices: the registry has {len(findings)} finding(s) (checks one practices-valid); "
-              f"no cells from an invalid registry", file=sys.stderr)
         return 2
     rows = block["rows"]
     if a.from_report:
@@ -346,7 +404,7 @@ def cmd_practices(a):
         for r in rows:
             if a.row and r["id"] != a.row:
                 continue
-            item = {k: r.get(k) for k in ("id", "part", "principle", "status", "held", "applies") if k in r}
+            item = practices.shown(r)
             if r["id"] in table:
                 item["counts"] = practices.counts(table[r["id"]])
                 item["cells"] = table[r["id"]]
@@ -359,10 +417,7 @@ def cmd_practices(a):
             print(f"  {loc:<34} {c['state']:<12} {c['why'][:160]}")
     else:
         for r in rows:
-            h = r.get("held") or {}
-            what = h.get("kind", "-") + (f" {h['gate']}" if h.get("gate") else "")
-            if h.get("check") or h.get("via"):
-                what += f" [{practices.check_of(r)}]"
+            what = _held_said(r)
             if r["id"] not in table:
                 print(f"  {r['id']:<30} {r.get('status', '')[:70]}")
                 continue
@@ -525,6 +580,7 @@ def main(argv):
         p.add_argument("--registry")
         p.add_argument("--lower", action="store_true")
         p.add_argument("--import", dest="import_md")
+        p.add_argument("--rows", action="store_true")
     if argv[0] in ("run", "one", "all"):
         p.add_argument("path", nargs="?")
         p.add_argument("--root")

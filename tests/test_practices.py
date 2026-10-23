@@ -176,8 +176,8 @@ class Cells(unittest.TestCase):
         self.assertEqual(practices.red(rows, t), 0)
 
 
-class Ratchet(Case):
-    """The CLI end to end: a fixture workspace, a test source, a real `checks all --json`."""
+class _Workspace(Case):
+    """A fixture workspace, a test source, a real `checks all --json` (no tests of its own)."""
 
     def setUp(self):
         super().setUp()
@@ -195,6 +195,10 @@ class Ratchet(Case):
         args = ["practices", self.ws, "--source", self.src, "--registry", self.reg, "--baseline", self.base]
         p = run_cli(*args, *(() if live else ("--from", self.report)), *extra)
         return p.returncode, p.stdout + p.stderr
+
+
+class Ratchet(_Workspace):
+    """The CLI end to end, through the ratchet."""
 
     def ratchet(self, live=False):
         rc, out = self.practices("--json", live=live)
@@ -251,6 +255,85 @@ class Ratchet(Case):
         self.assertIn("INVALID  practice 'rules-classified'", out)
 
 
+class RowsView(_Workspace):
+    """`checks practices --rows` (tl-564, todo's brief reads it): the rows a
+    measured run prints, with no check run, no cells and no ratchet."""
+
+    def rows_view(self, *extra):
+        p = run_cli("practices", self.ws, "--rows", "--source", self.src, "--registry", self.reg, *extra)
+        return p.returncode, p.stdout, p.stderr
+
+    def marked(self):
+        """Both checks the rows name, each leaving a marker when it runs."""
+        self.marks = self.tmp / "marks"
+        self.marks.mkdir()
+        for name in ("rules-gated", "hooks-installed"):
+            self.add_check(name, f"touch {self.marks / name}; exit 0")
+
+    def test_no_run_where_a_live_run_runs(self):
+        self.marked()
+        rc, out, err = self.rows_view("--json")
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(sorted(p.name for p in self.marks.iterdir()), [])     # nothing ran
+        view = json.loads(out)
+        self.assertEqual(sorted(view), ["blocked", "notes", "rows"])
+        # the counterfactual: the same call without --rows runs both checks and adds what a run measures
+        p = run_cli("practices", self.ws, "--json", "--source", self.src, "--registry", self.reg,
+                    "--baseline", self.base)
+        live = json.loads(p.stdout[:p.stdout.rindex("}") + 1])
+        self.assertEqual(sorted(p.name for p in self.marks.iterdir()), ["hooks-installed", "rules-gated"])
+        self.assertTrue({"measured", "locations", "ratchet"} <= set(live))
+        self.assertTrue(any("cells" in r for r in live["rows"]))
+        self.assertNotEqual(view["rows"], live["rows"])
+        stripped = [{k: v for k, v in r.items() if k not in ("counts", "cells")} for r in live["rows"]]
+        self.assertEqual(view["rows"], stripped)                                # the same rows, by meaning
+        self.assertEqual(view["blocked"], live["blocked"])
+
+    def test_the_rows_todo_reads(self):
+        rc, out, err = self.rows_view("--json")
+        rows = json.loads(out)["rows"]
+        self.assertEqual([r["id"] for r in rows], [r["id"] for r in fx.ROWS])
+        for r in rows:
+            self.assertTrue({"id", "status"} <= set(r), r)
+            self.assertNotIn("cells", r)          # ask-first carries recorded cells in the registry
+            if r["status"] == "live":
+                self.assertIsInstance(r["held"], dict)
+                self.assertIn("applies", r)
+        self.assertIn("cells", next(r for r in fx.ROWS if r["id"] == "ask-first"))
+
+    def test_one_row_live_or_not(self):
+        rc, out, _ = self.rows_view("--json", "--row", "old-rule")
+        self.assertEqual((rc, [r["id"] for r in json.loads(out)["rows"]]), (0, ["old-rule"]))
+        rc, _, err = self.rows_view("--row", "nowhere")
+        self.assertEqual(rc, 2)
+        self.assertIn("no row 'nowhere'", err)
+
+    def test_an_ignored_input_is_refused(self):
+        for extra, flag in [(("--from", self.report), "--from"), (("--lower", "--baseline", self.base), "--lower"),
+                            (("--import", self.tmp / "P.md"), "--import"), (("--names", "a"), "--names")]:
+            rc, out, err = self.rows_view(*extra)
+            self.assertEqual((rc, out), (2, ""), extra)
+            self.assertIn(f"{flag}", err)
+            self.assertIn("would be ignored", err)
+        self.assertFalse(self.base.exists())
+
+    def test_text_says_not_measured(self):
+        rc, out, _ = self.rows_view()
+        self.assertEqual(rc, 0)
+        self.assertIn("rules-classified", out)
+        self.assertIn("[rules-gated]", out)
+        self.assertIn("not measured: no check run", out)
+        self.assertNotIn("ratchet", out)
+
+    def test_an_invalid_registry_gives_no_rows(self):
+        block = json.loads(self.reg.read_text())
+        block["practices"]["rows"][1]["principle"] = "nowhere"
+        self.reg.write_text(json.dumps(block))
+        rc, out, err = self.rows_view("--json")
+        self.assertEqual((rc, out), (2, ""))
+        self.assertIn("no rows from an invalid registry", err)
+
+
 @unittest.skipUnless(WORKSPACE, "this tool is not in a tools/ folder")
 class RealRegistry(unittest.TestCase):
     def test_keys_are_the_row_keys(self):
@@ -263,6 +346,13 @@ class RealRegistry(unittest.TestCase):
         findings, notes = practices.validate(block, WORKSPACE)
         self.assertEqual(findings, [])
         self.assertGreater(len(practices.live(block["rows"])), 0)
+
+    def test_rows_view_serves_every_row(self):
+        """The call todo's brief makes (tl-564): every registry row, shown, no run."""
+        block, _ = practices.load()
+        p = run_cli("practices", "--rows", "--json")
+        self.assertEqual(p.returncode, 0, p.stderr[-400:])
+        self.assertEqual(json.loads(p.stdout)["rows"], [practices.shown(r) for r in block["rows"]])
 
 
 if __name__ == "__main__":

@@ -34,6 +34,13 @@
   over 20 locations; it moved 773 -> 774 between runs when the top's todo
   store began failing `todo check` on tl-305, so a run is a snapshot of a
   live workspace, not a constant). Open, by design or not yet built:
+  - `checks practices --rows [--json]` (tl-564, 2026-10-22; the earlier
+    tl-311 ask never reached this file): the rows with no run, 0.16 s and
+    28814 bytes on the real registry vs the stdin `--from` path's 3 s and
+    53222. todo's todolib/practices.py (td-64) still pipes a synthetic
+    report: its switch is todo's change, reported, not made here. The view
+    validates against the workspace, so a missing gate path in another repo
+    turns todo's brief UNCHECKED (as `--from` did); by design.
   - 17 rows wait on Jacob's C1-C8 (gates.json `practices.blocked`, each with
     its C<n> and why). When he decides, edit PRACTICES-rows.md, drop the
     entry from `blocked`, re-run `checks practices --import <file>`.
@@ -175,8 +182,11 @@
   .claude/lib/ledger.sh, hooks/store-guard.sh and its test (setup's
   re-render, as before). test.contract = WithHooks user-scope pin: hooks'
   support row for lib/ledger.sh now says `covered: null`, pinned `True`
-  (tools/hooks HEAD 10a40ba, clean tree): a change on hooks' side, the pin
-  is red by design; reported to hooks (unverified: why). WithTodo (both
+  (tools/hooks HEAD 10a40ba, clean tree). Settled 2026-10-22 (tl-564): ours,
+  not hooks' -- null was "missing": the fixture workspace lacked the libs'
+  `sourced_by` consumers (.claude/lib/append.sh, .claude/hooks/dispatch-guard.sh);
+  the test now plants each one `hooks list --json` declares, from the top,
+  and the pin holds unchanged (the earlier report to hooks is void). WithTodo (both
   real-tool tests) passed in that part.
 - `checks writers` + `silent-writes` (2026-10-13, 691cbf2; RESEARCH-writers.md
   could-not-settle 1): a line scan, not a parser. Blind spots, in
@@ -479,16 +489,15 @@
 
 ## Unconfirmed suspicions
 
-- test.contract red (2026-10-19, tl-321): WithHooks.
-  test_hooks_installed_follows_the_real_user_scope_report's pin expects hooks'
-  support split {ledger.sh: True, extra-stores.sh: True, write-targets.sh:
-  False, commit.sh: False}; the fixture run now gives ledger.sh and
-  write-targets.sh `covered: null`. It fails the same with tl-321's changes
-  stashed (run: `python3 -m unittest tests.test_contract.WithHooks.
-  test_hooks_installed_follows_the_real_user_scope_report`), so it is not the
-  ledger. Unverified cause: tools/hooks has uncommitted `.claude/settings.json`
-  work, and this repo's `.claude/lib/ledger.sh` copy drifted (uncommitted, not
-  ours). Settle the pin with tools/hooks once their work lands; reported.
+- test.check_partial flaky under load (seen 2026-10-22, tl-564): one full
+  `dev.sh check` (via commit.sh, 26 parts, --jobs 14) failed
+  CheckPartial.test_each_mutant_alone_fails_its_own_scenario_alone
+  (mutant='no-limit') with scenarios ['hung', 'killed'] != ['hung']: "killed:
+  no part passed before p2 hung (p1 comes first)". The three full runs before
+  it, same tree, passed. Suspected cause: the killed scenario's p1 must finish
+  inside a wall-clock window that a loaded machine misses. Probe: run
+  `./dev.sh test test.check_partial` while another full check runs, a few
+  times; if it reds, widen the window or make p1 signal its end.
 
 - Top `.claude/cli.json` (settled for cli-declared 2026-10-13, harness's
   path): `contract.cli_home` reads it for a non-git folder with no cli.json
