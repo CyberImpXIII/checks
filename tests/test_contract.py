@@ -132,6 +132,19 @@ class WithHooks(Case):
         proposal (registered: covered, ok), unparseable (unknown: unchecked), and
         one registering none of them (not covered: fail). The input changes the result."""
         ws = self.fixture_ws()
+        # How a lib's declared outside consumer (`sourced_by`, a path from the
+        # top) reads it -- the source in place, or a repo copy -- is read from
+        # that consumer's code; absent, hooks says `covered: null` ("missing").
+        # Plant each one the real top holds, so the split pinned below is the
+        # real one (hooks' CLAUDE.md: "plant them to get the real split").
+        listed = json.loads(subprocess.run([str(HOOKS), "list", "--json"], capture_output=True, text=True,
+                                           stdin=subprocess.DEVNULL, timeout=120, check=True).stdout)
+        consumers = sorted({c for e in listed for c in e.get("sourced_by") or []})
+        self.assertTrue(consumers, "tools/hooks declares no sourced_by consumer: drop this planting")
+        for c in consumers:
+            self.assertTrue((WORKSPACE / c).is_file(), f"the top has no {c}, which hooks declares as a consumer")
+            (ws / c).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(WORKSPACE / c, ws / c)
         user = self.tmp / "user"
         proposed = user / "settings.proposed.json"
         p = subprocess.run([str(HOOKS), "userscope", "--settings", str(user / "settings.json"), "--out", str(proposed)],
