@@ -167,6 +167,7 @@ class WithHooks(Case):
         self.assertTrue(support, "tools/hooks ships no lib/bin file: drop this half")
         self.assertEqual({f: support_rows[f]["covered"] for f in support if f in support_rows},
                          {".claude/lib/ledger.sh": True, ".claude/lib/extra-stores.sh": True,
+                          ".claude/lib/browser-drivers.sh": True,
                           ".claude/lib/write-targets.sh": False, ".claude/bin/commit.sh": False},
                          "hooks' support split changed: settle the pin with tools/hooks")
         uncovered = [f for f in support if support_rows[f]["covered"] is not True]
