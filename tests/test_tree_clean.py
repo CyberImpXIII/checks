@@ -21,7 +21,7 @@ class TreeClean(Case):
         res = self.cli_json("one", "tree-clean", r)[1]["results"][0]
         self.assertEqual(res["lines"], ["uncommitted (R): b.txt"])
 
-    def test_outside_git_is_unchecked(self):
+    def test_outside_git_is_na(self):
         (self.tmp / "plain").mkdir()
         res = self.cli_json("one", "tree-clean", self.tmp / "plain")[1]["results"][0]
-        self.assertEqual(res["status"], "unchecked")
+        self.assertEqual((res["status"], res.get("na")), ("ok", True))

@@ -489,13 +489,31 @@ class Accessor(Case):
 
 class StoresReadonly(Case):
     """PLAN-services.md §3 rule 2/5: a store its CLI writes whole sits at 0444;
-    SQLite is not judged by mode. Each case changes one input."""
+    SQLite is not judged by mode. Each case changes one input. The repos sit in a
+    workspace (`ws`), as every real one does; a CLI there whose `store_scope` is
+    `workspace` has its store judged in each repo that holds it
+    (ELABORATION-2.4-2.6.md §3, INCIDENTS.md I-3)."""
+
+    def setUp(self):
+        super().setUp()
+        self.ws = self.tmp / "ws"
+        write(self.ws / "CLAUDE.md", "# top\n")
 
     def one(self, r):
-        return self.cli_json("one", "stores-readonly", r)[1]["results"][0]
+        return self.cli_json("one", "stores-readonly", r, "--root", self.ws)[1]["results"][0]
+
+    def lister(self, scope="workspace", name="list", store="list.json"):
+        """A CLI at ws/tools/<name> whose store (and its render LIST.md) live in every repo it runs in."""
+        d = repo(self.ws / "tools" / name)
+        cli(d / "list.sh", "add")
+        doc = {"store": [store], "renders": {"LIST.md": "add"}, "cli": "list.sh", "verbs": ["add"]}
+        if scope:
+            doc["store_scope"] = scope
+        write(d / "cli.json", json.dumps(doc))
+        return d
 
     def store(self, stores, files):
-        r = repo(self.tmp / "r")
+        r = repo(self.ws / "r")
         cli(r / "store.sh", "add", "list")
         write(r / "cli.json", json.dumps(dict(CLIDOC, store=stores)))
         for rel, mode in files.items():
@@ -520,23 +538,75 @@ class StoresReadonly(Case):
     def test_sqlite_and_its_side_files_are_not_judged(self):
         res = self.one(self.store(["app.db", "app.db-wal", "x.sqlite3-journal"],
                                   {"app.db": 0o644, "app.db-wal": 0o644, "x.sqlite3-journal": 0o644}))
-        self.assertEqual(res["status"], "unchecked", res["lines"])
+        self.assertEqual((res["status"], res.get("na")), ("ok", True), res["lines"])
         self.assertIn("every store is SQLite", res["lines"][0])
         res = self.one(self.store(["app.db", "t.json"], {"app.db": 0o644, "t.json": 0o444}))
         self.assertEqual((res["status"], res["lines"]), ("ok", ["read-only: t.json"]))
 
-    def test_nothing_to_judge_is_unchecked_never_ok(self):
-        self.assertEqual(self.one(repo(self.tmp / "none"))["status"], "unchecked")
-        r = repo(self.tmp / "nostore")
+    def test_no_store_is_na_and_a_store_on_no_file_is_unchecked(self):
+        res = self.one(repo(self.ws / "none"))
+        self.assertEqual((res["status"], res.get("na")), ("ok", True))
+        r = repo(self.ws / "nostore")
         cli(r / "store.sh", "add")
         write(r / "cli.json", json.dumps({"cli": "store.sh", "verbs": ["add"]}))
         write(r / "todo.json", "{}\n", 0o644)
         res = self.one(r)
-        self.assertEqual(res["status"], "unchecked")
-        self.assertIn("declares no `store`", res["lines"][0])
+        self.assertEqual((res["status"], res.get("na")), ("ok", True))
+        self.assertIn("no store or render is declared here", res["lines"][0])
         res = self.one(self.store("missing.json", {}))
         self.assertEqual(res["status"], "unchecked")
         self.assertIn("matches no file", res["lines"][0])
+
+    def test_a_workspace_clis_store_and_render_here_are_judged(self):
+        self.lister()
+        r = repo(self.ws / "r")
+        write(r / "list.json", "x\n", 0o644)
+        write(r / "LIST.md", "x\n", 0o444)
+        res = self.one(r)
+        self.assertEqual((res["status"], res["lines"]), ("fail", [
+            "list.json (tools/list's): writable (mode 0644); a store its CLI writes whole sits at 0444"]))
+        os.chmod(r / "list.json", 0o444)
+        os.chmod(r / "LIST.md", 0o644)
+        self.assertEqual(self.one(r)["lines"], [
+            "LIST.md (tools/list's): writable (mode 0644); a store its CLI writes whole sits at 0444"])
+        os.chmod(r / "LIST.md", 0o444)
+        self.assertEqual((self.one(r)["status"], self.one(r)["lines"]),
+                         ("ok", ["read-only: LIST.md (tools/list), list.json (tools/list)"]))
+
+    def test_a_render_is_judged_only_beside_its_store(self):
+        self.lister()
+        r = repo(self.ws / "r")
+        write(r / "LIST.md", "x\n", 0o644)           # a hand-written file of the same name, no store here
+        res = self.one(r)
+        self.assertEqual((res["status"], res.get("na")), ("ok", True), res["lines"])
+
+    def test_a_cli_without_workspace_scope_is_judged_only_in_its_own_repo(self):
+        self.lister(scope=None)
+        r = repo(self.ws / "r")
+        write(r / "list.json", "x\n", 0o644)
+        res = self.one(r)
+        self.assertEqual((res["status"], res.get("na")), ("ok", True), res["lines"])
+        self.lister(scope="repo", name="list2")
+        self.assertEqual(self.one(r).get("na"), True)
+
+    def test_a_file_two_clis_claim_is_a_finding(self):
+        self.lister()
+        r = self.store("list.json", {"list.json": 0o444})
+        self.assertEqual(self.one(r)["lines"], [
+            "list.json: claimed by two CLIs (this repo's and tools/list's): one store has one CLI"])
+
+    def test_no_workspace_is_unchecked_and_a_writable_own_store_still_fails(self):
+        r = repo(self.tmp / "lone")
+        cli(r / "store.sh", "add", "list")
+        write(r / "cli.json", json.dumps(dict(CLIDOC, store="todo.json")))
+        write(r / "todo.json", "x\n", 0o444)
+        res = self.cli_json("one", "stores-readonly", r)[1]["results"][0]
+        self.assertEqual(res["status"], "unchecked", res["lines"])
+        self.assertEqual(res["lines"], ["no workspace top around this repo: other CLIs' stores here cannot be known; "
+                                        "this repo's own are read-only: todo.json"])
+        os.chmod(r / "todo.json", 0o644)
+        res = self.cli_json("one", "stores-readonly", r)[1]["results"][0]
+        self.assertEqual(res["status"], "fail")
 
     def test_a_broken_cli_json_is_unchecked_and_left_to_accessor(self):
         r = self.store("todo.json", {"todo.json": 0o644})
@@ -578,9 +648,9 @@ class RegistryMatches(Case):
     def test_unchecked_and_broken_registries(self):
         r = self.tmp / "plain"
         r.mkdir()
-        self.assertEqual(self.one(r)["status"], "unchecked")
+        self.assertEqual((self.one(r)["status"], self.one(r).get("na")), ("ok", True))     # not a node: n/a
         r = self.node(None, {"rebuild": ["true"], "generated": [], "record": []})
-        self.assertEqual(self.one(r)["status"], "unchecked")
+        self.assertEqual((self.one(r)["status"], self.one(r).get("na")), ("ok", True))     # no registry, no children
         r = self.node(None, {"rebuild": ["true"], "generated": [], "record": [], "children": ["kid"]})
         self.assertIn("names children but no `registry`", self.one(r)["lines"][0])
         r = self.node(None)

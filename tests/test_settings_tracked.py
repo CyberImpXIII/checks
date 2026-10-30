@@ -51,10 +51,10 @@ class SettingsTracked(Case):
         r = repo(self.tmp / "r", {".claude/settings.local.json": SETTINGS})
         self.assertEqual(self.result(r)["status"], "ok")
 
-    def test_outside_git_is_unchecked(self):
+    def test_outside_git_is_na(self):
         write(self.tmp / "plain" / REL, SETTINGS)
         res = self.result(self.tmp / "plain")
-        self.assertEqual(res["status"], "unchecked")
+        self.assertEqual((res["status"], res.get("na")), ("ok", True))
         self.assertIn("not a git repo", res["lines"][0])
 
     def test_runs_in_a_pre_commit_run(self):

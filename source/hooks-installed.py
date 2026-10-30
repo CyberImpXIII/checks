@@ -133,7 +133,7 @@ def workspace_mode(ctx, cli):
         api.done(unchecked=f"`hooks copies` does not list {ctx.rel} as a location; its hooks went uncompared")
     files = mine[0].get("files") or []
     if not files:
-        api.done(unchecked=f"`hooks copies` expects no hook in {ctx.rel}; nothing to compare")
+        api.done(na=f"`hooks copies` expects no hook in {ctx.rel}; nothing to compare")
     repo_copy, covered, red, unknown, mid_edit = [], [], [], [], []
     for f in files:
         name, status = f.get("file"), f.get("status")

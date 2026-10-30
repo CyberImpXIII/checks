@@ -6,7 +6,7 @@
 # .git/info/exclude or the global excludes file), so the hook registrations it
 # holds travel with a clone (PLAN-repo-setup.md §7.9). A repo with no
 # settings.json passes: there is nothing to track. Outside a git repo (the
-# workspace top) it is UNCHECKED, said out loud.
+# workspace top) it is n/a, said out loud.
 # To pass: `git add .claude/settings.json` unchanged and commit it; delete the
 # ignore rule the finding names (it names file:line and the pattern). The
 # file's contents stay Jacob's: this check never asks for an edit to them.
@@ -22,7 +22,7 @@ REL = ".claude/settings.json"
 def main():
     ctx = api.context()
     if not ctx.is_git():
-        api.done(unchecked="not a git repo: nothing can track .claude/settings.json here")
+        api.done(na="not a git repo: nothing can track .claude/settings.json here")
     if not (ctx.repo / REL).is_file():
         api.done()
     findings = []

@@ -63,7 +63,7 @@ USAGE = """checks <command>   the generic pre-commit gates, one source, run per 
   --source DIR       another source of checks (tests use fixtures)
 """
 
-MARK = {"ok": "ok", "fail": "FAIL", "unchecked": "unch", "error": "ERR"}
+MARK = {"ok": "ok", "fail": "FAIL", "unchecked": "unch", "error": "ERR", "na": "n/a"}
 SHOW = 8
 
 
@@ -118,9 +118,11 @@ def _print_repo(rep, head=True):
     if head:
         print(f"== {rep.get('rel') or rep['repo']}")
     for r in rep["results"]:
-        first = r["lines"][0] if r["lines"] and r["status"] == "unchecked" else ""
-        print(f"  {r['status'].upper():<10} {r['check']}{'  ' + first if first else ''}")
-        if r["status"] in runner.RED or r["status"] == "ok":    # an ok check's lines are notes it chose to give
+        said = r["status"] == "unchecked" or r.get("na")
+        first = r["lines"][0] if r["lines"] and said else ""
+        label = "N/A" if r.get("na") else r["status"].upper()
+        print(f"  {label:<10} {r['check']}{'  ' + first if first else ''}")
+        if r["status"] in runner.RED or (r["status"] == "ok" and not r.get("na")):    # an ok check's lines are notes it chose to give
             for l in r["lines"][:SHOW]:
                 print(f"               {l}")
             if len(r["lines"]) > SHOW:
@@ -130,10 +132,23 @@ def _print_repo(rep, head=True):
 
 
 def _summary(results):
+    """`N ok, K n/a, ..., M unchecked (not a pass)`: an n/a is a pass with its reason, an
+    unchecked never is."""
     counts = {}
     for r in results:
-        counts[r["status"]] = counts.get(r["status"], 0) + 1
-    return ", ".join(f"{counts[s]} {s}" for s in ("ok", "fail", "error", "unchecked") if s in counts) or "no checks"
+        s = "n/a" if r.get("na") else r["status"]
+        counts[s] = counts.get(s, 0) + 1
+    said = {"unchecked": "unchecked (not a pass)"}
+    return ", ".join(f"{counts[s]} {said.get(s, s)}" for s in ("ok", "n/a", "fail", "error", "unchecked")
+                     if s in counts) or "no checks"
+
+
+def _verdict(rep):
+    """RED on a fail, an error or a fault; never `green` while a check said unchecked."""
+    if not rep["ok"]:
+        return "RED"
+    unch = sum(r["status"] == "unchecked" for r in rep["results"])
+    return f"not green: {unch} unchecked" if unch else "green"
 
 
 def _run(a, only):
@@ -148,7 +163,7 @@ def _run(a, only):
         _print_repo(rep, head=False)
         print(f"checks {'run' if only is None else 'one'} {rep['rel'] or rep['repo']}: {_summary(rep['results'])}"
               f"{', ' + str(len(rep['faults'])) + ' fault(s)' if rep['faults'] else ''}"
-              f" -> {'green' if rep['ok'] else 'RED'}")
+              f" -> {_verdict(rep)}")
     return 0 if rep["ok"] else 1
 
 
@@ -174,17 +189,19 @@ def cmd_all(a):
     width = max([len(r.get("rel") or "?") for r in rep["repos"]] + [4])
     print(" " * (width + 2) + " ".join(f"{n[:11]:<11}" for n in names))
     for repo in rep["repos"]:
-        cells = {r["check"]: MARK[r["status"]] for r in repo["results"]}
+        cells = {r["check"]: MARK["na" if r.get("na") else r["status"]] for r in repo["results"]}
         flag = "  FAULT" if repo["faults"] else ""
         print(f"  {(repo.get('rel') or '?'):<{width}}" + " ".join(f"{cells.get(n, '-'):<11}" for n in names) + flag)
-    print("\n(ok | FAIL | ERR | unch = could not run here, said why | - = does not apply)")
+    print("\n(ok | n/a = nothing of this kind here, a pass, said why | FAIL | ERR | unch = could not judge here,"
+          " said why, never a pass | - = does not apply)")
     red = [repo for repo in rep["repos"] if not repo["ok"]]
     for repo in red:
         print()
         _print_repo({**repo, "results": [r for r in repo["results"] if r["status"] in runner.RED]})
     unch = sum(r["status"] == "unchecked" for repo in rep["repos"] for r in repo["results"])
+    na = sum(bool(r.get("na")) for repo in rep["repos"] for r in repo["results"])
     print(f"\nchecks all {rep['root']}: {len(rep['repos'])} location(s), {len(red)} red, "
-          f"{unch} UNCHECKED cell(s) (never ok; `checks one <check> <repo>` says why)")
+          f"{na} n/a cell(s), {unch} UNCHECKED cell(s) (never ok; `checks one <check> <repo>` says why)")
     return 0 if rep["ok"] else 1
 
 

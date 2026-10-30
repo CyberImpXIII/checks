@@ -233,6 +233,7 @@ class Parts(Case):
         self.assertEqual(r.stdout.splitlines()[-1], "check: 1 of 2 passed; unchecked: p2 (no sibling repo here)")
         st = self.progress()
         self.assertEqual((st["state"], st["passed_steps"], st["failed_names"], st["step"]), ("passed", ["p1"], [], 2))
+        self.assertEqual(st["unchecked"], ["p2"], "a reader of state: passed can tell it from a whole pass")
         self.assertNotIn("p2", st["hashes"], "an unchecked part is never kept for --resume")
         r = self.run_parts(doc(3), "--json")
         self.assertEqual((r.returncode, checkjson.validate(r.stdout, r.returncode)), (0, []))

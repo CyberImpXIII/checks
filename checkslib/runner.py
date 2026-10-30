@@ -4,7 +4,10 @@ report every result (never only the first failure). `run_all` runs one
 
 Statuses: ok, fail, unchecked (from the check's exit code, vocab.json
 `results`), error (any other exit, a timeout, a refused check, a bad
-checks.json). fail and error make a run red; unchecked never makes it green."""
+checks.json). fail and error make a run red; unchecked never makes it green.
+A check's `na` (nothing of this kind here) is reported as status ok with `na`
+true and its reason as the line: a pass, so every reader of `ok` stays right,
+and the text says n/a."""
 import json
 import os
 import subprocess
@@ -110,10 +113,13 @@ def run_one(entry, repo, ws=None, params=None, names=None, timeout=TIMEOUT, env=
     lines = [l for l in p.stdout.splitlines() if l.strip()]
     if status == "error":
         lines = [f"exit {p.returncode}"] + lines + [l for l in p.stderr.splitlines() if l.strip()][-6:]
-    elif status in ("fail", "unchecked") and not lines:
+    elif status in ("fail", "unchecked", "na") and not lines:
         lines = [f"exit {p.returncode} with nothing said; a check must say why"]
         status = "error"
-    return {"check": entry.name, "status": status, "lines": lines, "seconds": round(time.monotonic() - t0, 1)}
+    out = {"check": entry.name, "status": status, "lines": lines, "seconds": round(time.monotonic() - t0, 1)}
+    if status == "na":
+        out.update(status="ok", na=True)
+    return out
 
 
 def run_repo(repo, source=DEFAULT_SOURCE, ws=None, names=None, roles=(), only=None):

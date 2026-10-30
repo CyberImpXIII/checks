@@ -38,7 +38,11 @@ standard library only, no import from beside it, so a copy works alone
       A part that exits 3 is `unchecked` (it could not judge, e.g. a lone
       clone with no sibling repo): text `UNCHK <name>` and its last output
       line, the summary adds `; unchecked: <name> (<that line>)`; it is neither
-      a pass nor a fail, is not kept for --resume, and does not make the run red.
+      a pass nor a fail, is not kept for --resume, does not make the run red,
+      and is named in the progress file's `unchecked` list (so a reader of
+      `state: passed` can tell a run with an unchecked part from a whole pass).
+      The summary line's shape is pinned by the repos that copy this runner
+      (their own tests), so it is never reworded in passing.
       --json: stdout is one document in tools/checks/schema/check-json.schema.json,
       one check per part (a timeout `error`, exit 3 `unchecked` with `reason`
       `exit 3: <last line>`, any other non-zero exit `fail`, a skipped part `ok`
@@ -130,7 +134,7 @@ import tempfile
 import threading
 import time
 
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 NAME = re.compile(r"[A-Za-z0-9._-]+\Z")
 USES = re.compile(r"(browser|serial|store:[A-Za-z0-9._/-]+)\Z")
 SERIAL = "serial"
@@ -418,7 +422,7 @@ class Progress:
                       "total": total, "label": "", "passed": 0, "failed": 0, "failed_names": [],
                       "state": "running", "last_duration_s": self.last_duration(), "resumed_from": None,
                       "passed_steps": [], "hashes": {}, "runner": VERSION, "only": None, "kept": None,
-                      "jobs": jobs, "running": [], "times": {}}
+                      "jobs": jobs, "running": [], "times": {}, "unchecked": []}
         self.write()
 
     def _running(self, name, on):
@@ -443,7 +447,7 @@ class Progress:
         else:
             s["label"] = name
         if ok is None:
-            pass
+            s.setdefault("unchecked", []).append(name)
         elif ok:
             s["passed"] += 1
             s["passed_steps"].append(name)

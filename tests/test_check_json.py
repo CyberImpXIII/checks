@@ -117,8 +117,9 @@ def mutated(fn):
 
 class SchemaFile(unittest.TestCase):
     def test_status_enum_is_vocab_statuses_plus_error(self):
+        # na never leaves the runner as a status: it is reported ok with `na` true (runner.run_one)
         enum = SCHEMA["properties"]["checks"]["items"]["properties"]["status"]["enum"]
-        self.assertEqual(set(enum), {s["status"] for s in api.RESULTS.values()} | {"error"})
+        self.assertEqual(set(enum), {s["status"] for s in api.RESULTS.values()} - {"na"} | {"error"})
 
     def test_x_rules_equal_the_rules_implemented(self):
         self.assertEqual(set(SCHEMA["x-rules"]), set(checkjson.RULES))

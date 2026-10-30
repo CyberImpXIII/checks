@@ -145,15 +145,15 @@ class Repro(Case):
         self.assertEqual(len(res["lines"]), 1, res["lines"])
         self.assertTrue(res["lines"][0].startswith("`stamp`:"))
 
-    def test_nothing_declared_is_unchecked_never_ok(self):
+    def test_nothing_declared_is_na(self):
         r = repo(self.tmp / "none")
         res = self.one(r)
-        self.assertEqual(res["status"], "unchecked")
+        self.assertEqual((res["status"], res.get("na")), ("ok", True))
         self.assertIn("no cli.json", res["lines"][0])
         write(r / "tool", TOOL, 0o755)
         write(r / "cli.json", json.dumps({"cli": "tool", "verbs": ["count"]}))
         res = self.one(r)
-        self.assertEqual(res["status"], "unchecked")
+        self.assertEqual((res["status"], res.get("na")), ("ok", True))
         self.assertIn("declares no `read` verbs", res["lines"][0])
 
     def test_a_cli_json_that_breaks_a_rule_is_unchecked_and_left_to_accessor(self):

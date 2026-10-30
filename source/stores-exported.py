@@ -12,7 +12,7 @@
 # non-zero exit beside a report where every item is `same` (a verify that
 # died mid-way must not read as a pass). Only `unavailable` items left is
 # UNCHECKED, naming them.
-# No cli.json, or one with no `store` (a CLI over no store), is UNCHECKED (no
+# No cli.json, or one with no `store` (a CLI over no store), is n/a (no
 # store declared here, so no export); a cli.json with any
 # finding is reported as accessor would, not run. A store entry listed in
 # cli.json's `not_exported` (with why: private, never exported) is not asked
@@ -47,11 +47,11 @@ def main():
     ctx = api.context()
     doc, found = contract.read(ctx.repo, contract.CLI)
     if doc is None and not found:
-        api.done(unchecked=f"no {contract.CLI}: no store is declared here, so no export to verify")
+        api.done(na=f"no {contract.CLI}: no store is declared here, so no export to verify")
     if found:
         api.done(found)
     if not contract.has_store(doc):
-        api.done(unchecked=f"{contract.CLI} declares no `store` (a CLI over no store): no export to verify")
+        api.done(na=f"{contract.CLI} declares no `store` (a CLI over no store): no export to verify")
     private = doc.get("not_exported") or {}
     said = "; ".join(f"`{k}`: {why}" for k, why in sorted(private.items()))
     if not contract.exported_stores(doc):

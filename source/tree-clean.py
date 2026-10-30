@@ -6,7 +6,7 @@
 # never in a repo's pre-commit run: there, uncommitted work is exactly what is
 # about to be committed. In an audit across the workspace, a dirty tree means
 # someone is mid-task there, or left work nobody else can pick up.
-# Outside a git repo (the workspace top) it is UNCHECKED, said out loud.
+# Outside a git repo (the workspace top) it is n/a, said out loud.
 # To pass: commit the work (or ignore what should never be committed); if it
 # is another session's, leave it and tell its owner.
 import sys
@@ -19,7 +19,7 @@ from checkslib import api  # noqa: E402
 def main():
     ctx = api.context()
     if not ctx.is_git():
-        api.done(unchecked="not a git repo: no working tree to compare with a commit")
+        api.done(na="not a git repo: no working tree to compare with a commit")
     code, out = ctx.git("status", "--porcelain=v1", "-z", "--untracked-files=all")
     if code != 0:
         print(f"git status failed (exit {code})")

@@ -22,9 +22,9 @@
 # says so).
 # cli.json's own rules (`read` names declared verbs, each with `--json`, the
 # fixture a folder in the repo, ...) are `accessor`'s findings; here a
-# cli.json that breaks any is UNCHECKED, as is no cli.json (`cli-declared`
+# cli.json that breaks any is UNCHECKED; no cli.json (`cli-declared`
 # reports that as a lag) and a cli.json with no `read` (no verb is known to
-# only read). On ok it names each verb run and its exit code.
+# only read) are n/a. On ok it names each verb run and its exit code.
 # To pass: sort what the verb prints and print no wall-clock time unless it is
 # asked for; a field that must vary (a time asked for, a duration) goes in
 # that verb's `volatile`; delete a volatile path that no longer matches.
@@ -59,12 +59,12 @@ def main():
     ctx = api.context()
     doc, found = contract.read(ctx.repo, contract.CLI)
     if doc is None and not found:
-        api.done(unchecked=f"no {contract.CLI}: no verb declared, so none to run (`cli-declared` reports the lag)")
+        api.done(na=f"no {contract.CLI}: no verb declared, so none to run (`cli-declared` reports the lag)")
     if found:
         api.done(unchecked=f"{contract.CLI} breaks a rule (`accessor` says which); no verb run: {found[0][:200]}")
     read = doc.get("read")
     if not read:
-        api.done(unchecked=f"{contract.CLI} declares no `read` verbs: nothing is known to only read, so nothing runs twice")
+        api.done(na=f"{contract.CLI} declares no `read` verbs: nothing is known to only read, so nothing runs twice")
     scratch = Path(tempfile.mkdtemp(prefix="checks-repro-"))
     try:
         fixture = None

@@ -515,7 +515,8 @@ def _cell(row, loc, locs, results, over=None):
             if st == "ok" and h.get("partial"):
                 state, why = "unknown", f"{name} ok here, but the row is only partly held by it: {h.get('text')}"
             elif st == "ok":
-                state, why, decided = "held", f"{name} ok" + (f": {first}" if first else ""), True
+                said = "n/a" if r.get("na") else "ok"     # n/a: nothing of the kind here to break it
+                state, why, decided = "held", f"{name} {said}" + (f": {first}" if first else ""), True
             elif st == "fail":
                 state, why, decided = "unjustified", f"{name} FAIL: {first}{more}", True
             elif st in ("unchecked", "error"):

@@ -27,14 +27,15 @@ class Run(Case):
         self.assertFalse(rep["ok"])
 
     def test_every_broken_exit_is_error_and_red(self):
-        cases = {"one": "exit 1", "silentfail": "exit 2", "silentunch": "exit 3", "crash": "kill -9 $$"}
+        cases = {"one": "exit 1", "silentfail": "exit 2", "silentunch": "exit 3", "silentna": "exit 4",
+                 "crash": "kill -9 $$"}
         for n, body in cases.items():
             self.add_check(n, body)
         self.add_check("unch", 'echo "cannot here"; exit 3')
         rep = runner.run_repo(repo(self.tmp / "r"), self.src)
         got = {r["check"]: r["status"] for r in rep["results"]}
-        self.assertEqual(got, {"one": "error", "silentfail": "error", "silentunch": "error", "crash": "error",
-                               "unch": "unchecked"})
+        self.assertEqual(got, {"one": "error", "silentfail": "error", "silentunch": "error", "silentna": "error",
+                               "crash": "error", "unch": "unchecked"})
         self.assertFalse(rep["ok"])
 
     def test_unchecked_alone_is_not_red_but_is_never_ok(self):
@@ -42,6 +43,16 @@ class Run(Case):
         rep = runner.run_repo(repo(self.tmp / "r"), self.src)
         self.assertTrue(rep["ok"])
         self.assertEqual(rep["results"][0]["status"], "unchecked")
+
+    def test_na_is_a_pass_with_its_reason_and_unchecked_is_not(self):
+        # ELABORATION-2.4-2.6.md §1.2 part 1: nothing of this kind here is n/a, reported ok
+        # with `na` true (every reader of ok stays right); could-not-judge stays unchecked
+        self.add_check("none", 'echo "no store declared here"; exit 4')
+        rep = runner.run_repo(repo(self.tmp / "r"), self.src)
+        self.assertTrue(rep["ok"])
+        self.assertEqual(rep["results"][0], {"check": "none", "status": "ok", "na": True,
+                                             "lines": ["no store declared here"],
+                                             "seconds": rep["results"][0]["seconds"]})
 
     def test_timeout_is_error(self):
         self.add_check("slow", "sleep 5")
@@ -159,19 +170,22 @@ class All(Case):
         self.add_check("aok", "exit 0")
         self.add_check("bfail", 'echo "red"; exit 2')
         self.add_check("cunch", 'echo "cannot here"; exit 3')
+        self.add_check("dna", 'echo "none of these here"; exit 4')
         ws = self.tmp / "ws"
         repo(ws)
         repo(ws / "kid")
         p = run_cli("all", ws, "--source", self.src)
-        rows = {line.split()[0]: line.split()[1:4] for line in p.stdout.splitlines()
+        rows = {line.split()[0]: line.split()[1:5] for line in p.stdout.splitlines()
                 if line.startswith("  ") and line.split()[0] in (".", "kid")}
-        self.assertEqual(rows, {".": ["ok", "FAIL", "unch"], "kid": ["ok", "FAIL", "unch"]}, p.stdout)
-        self.assertIn("unch = could not run here", p.stdout)
-        self.assertIn(": 2 location(s), 2 red, 2 UNCHECKED cell(s) (never ok", p.stdout.splitlines()[-1])
+        self.assertEqual(rows, {".": ["ok", "FAIL", "unch", "n/a"], "kid": ["ok", "FAIL", "unch", "n/a"]}, p.stdout)
+        self.assertIn("n/a = nothing of this kind here, a pass", p.stdout)
+        self.assertIn("unch = could not judge here, said why, never a pass", p.stdout)
+        self.assertIn(": 2 location(s), 2 red, 2 n/a cell(s), 2 UNCHECKED cell(s) (never ok", p.stdout.splitlines()[-1])
         doc = json.loads(run_cli("all", ws, "--source", self.src, "--json").stdout)
         got = {(rp["rel"], r["check"]): r["status"] for rp in doc["repos"] for r in rp["results"]}
         self.assertEqual(got[(".", "cunch")], "unchecked")
         self.assertEqual(got[("kid", "cunch")], "unchecked")
+        self.assertEqual(got[("kid", "dna")], "ok")
 
     def test_a_repo_whose_process_prints_no_report_is_a_fault(self):
         with mock.patch.object(runner, "CLI", self.tmp / "no-such-cli"):
@@ -188,6 +202,19 @@ class Cli(Case):
         self.assertEqual(lines(self.cli_json("run", r, "--source", self.src)), "unset")
         self.assertEqual(lines(self.cli_json("run", r, "--source", self.src, "--names", "a,b")), "a,b")
         self.assertEqual(lines(self.cli_json("run", r, "--source", self.src, env={"CHECKS_ROSTER_NAMES": "c"})), "c")
+
+    def test_the_run_line_is_never_green_while_a_check_said_unchecked(self):
+        r = repo(self.tmp / "r")
+        self.add_check("good", "exit 0")
+        self.add_check("none", 'echo "nothing here"; exit 4')
+        p = run_cli("run", r, "--source", self.src)
+        self.assertEqual((p.returncode, p.stdout.splitlines()[-1].split(": ", 1)[1]),
+                         (0, "1 ok, 1 n/a -> green"), p.stdout)
+        self.assertIn("  N/A        none  nothing here", p.stdout)
+        self.add_check("unch", 'echo "cannot here"; exit 3')
+        p = run_cli("run", r, "--source", self.src)
+        self.assertEqual((p.returncode, p.stdout.splitlines()[-1].split(": ", 1)[1]),
+                         (0, "1 ok, 1 n/a, 1 unchecked (not a pass) -> not green: 1 unchecked"), p.stdout)
 
     def test_exit_codes(self):
         self.add_check("good", "exit 0")

@@ -77,9 +77,13 @@ def context(argv=None):
     return Ctx(repo, os.environ.get(ENV_WORKSPACE) or None, params, names)
 
 
-def done(findings=(), unchecked=None):
-    """Exit with the result: findings -> fail; else unchecked (a reason) -> unchecked; else ok."""
+def done(findings=(), unchecked=None, na=None):
+    """Exit with the result: findings -> fail; else unchecked (a reason) -> unchecked;
+    else na (what is absent) -> na; else ok. unchecked: there is something to judge here
+    and this run could not; na: there is nothing of this kind here, a pass with its reason."""
     findings = list(findings)
+    if unchecked and na:
+        raise ValueError("done(): unchecked and na are exclusive -- either it could not judge, or there is nothing to judge")
     if findings:
         for f in findings:
             print(f)
@@ -87,4 +91,7 @@ def done(findings=(), unchecked=None):
     if unchecked:
         print(unchecked)
         sys.exit(CODE["unchecked"])
+    if na:
+        print(na)
+        sys.exit(CODE["na"])
     sys.exit(CODE["ok"])

@@ -69,7 +69,7 @@ def main():
                 for m in name_rx.finditer(line):
                     findings.append(f"{rel}:{n}: names roster agent `{m.group(2) or m.group(3)}`")
     if not scanned:
-        api.done(unchecked="nothing in scope to scan (every file excluded, or none tracked)")
+        api.done(na="nothing in scope to scan (every file excluded, or none tracked)")
     if findings:
         api.done(findings)
     if names is None:

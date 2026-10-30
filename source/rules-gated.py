@@ -226,7 +226,7 @@ def main():
 
     md = ctx.repo / "CLAUDE.md"
     if not md.is_file():
-        api.done(findings, unchecked="no CLAUDE.md here: no rules to classify")
+        api.done(findings, na="no CLAUDE.md here: no rules to classify")
     text = md.read_text(errors="replace")
     secs = claudemd.sections(text)
     text_of = lambda s: s.heading + "\n" + "\n".join(s.lines)  # noqa: E731
@@ -253,7 +253,7 @@ def main():
         api.done(unchecked="no workspace top: sections are classified, but gate paths and plan pointers went unchecked")
     applied = [r for _, r in applied_pairs]
     if not secs:
-        api.done(unchecked="CLAUDE.md has no `## ` sections: nothing to classify")
+        api.done(na="CLAUDE.md has no `## ` sections: nothing to classify")
     planned = [r.get("id") for r in applied if r.get("status") == "planned"]
     prose = sum(1 for r in applied if r.get("kind") == "prose")
     print(f"rows here: {len(applied)} ({len(applied) - len(planned) - prose} gated, {len(planned)} planned, "

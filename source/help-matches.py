@@ -11,7 +11,7 @@
 # block, nested cases aside, minus the help arm (the one listing -h/--help/"").
 # To pass: add the missing line to usage(), or the missing arm to the case.
 # A git repo with no script fails (it has no pre-commit command); a folder that
-# is not a git repo and has none is UNCHECKED.
+# is not a git repo and has none is n/a.
 import re
 import sys
 from pathlib import Path
@@ -52,7 +52,7 @@ def main():
     if not script.is_file():
         if ctx.is_git():
             api.done([f"{script.name}: missing; the repo has no pre-commit command"])
-        api.done(unchecked=f"{script.name}: absent, and this is not a git repo")
+        api.done(na=f"{script.name}: absent, and this is not a git repo")
     impl = implemented(script.read_text(errors="replace"))
     if impl is None:
         api.done([f"{script.name}: no top-level `case ... esac` dispatch found"])

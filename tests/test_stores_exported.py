@@ -64,15 +64,15 @@ class StoresExported(Case):
         res = self.one(r, env={"DATA_REPO": str(self.tmp / "nowhere")})
         self.assertEqual(res["lines"], ["DATA_REPO is set but is not a folder: the export has nowhere to be"])
 
-    def test_no_cli_json_is_unchecked_and_no_verify_verb_is_red(self):
+    def test_no_cli_json_is_na_and_no_verify_verb_is_red(self):
         res = self.one(repo(self.tmp / "plain"))
-        self.assertEqual(res["status"], "unchecked")
+        self.assertEqual((res["status"], res.get("na")), ("ok", True))
         r = self.store(verbs=("export",))
         self.assertEqual(self.one(r)["lines"], ["cli.json: declares no `verify` verb: nothing shows the store's export is current"
                                                 " (entries: data/app.db; a private one goes in `not_exported` with why)"])
         write(r / "cli.json", json.dumps({"cli": "store.sh", "verbs": ["export"]}))   # a CLI over no store
         res = self.one(r)
-        self.assertEqual(res["status"], "unchecked")
+        self.assertEqual((res["status"], res.get("na")), ("ok", True))
         self.assertIn("declares no `store`", res["lines"][0])
 
     def test_not_exported_turns_the_result_and_only_for_the_entries_it_names(self):

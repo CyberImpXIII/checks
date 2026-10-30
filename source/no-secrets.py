@@ -19,7 +19,7 @@
 # A finding names the file, the line and the KIND of credential, never the
 # value; a staged-copy finding says "in the staged copy". `allow` (path globs)
 # exempts files from the content scan only, for a test fixture that must hold
-# a shaped-but-fake value. Not a git repo: UNCHECKED.
+# a shaped-but-fake value. Not a git repo: n/a (nothing is tracked to commit).
 # To pass: untrack the file (git rm --cached), rotate anything real, and add
 # the path to .gitignore; for a capture folder, ignore it.
 import fnmatch
@@ -116,7 +116,7 @@ def main():
     ctx = api.context()
     files = ctx.tracked()
     if files is None:
-        api.done(unchecked="not a git repo: nothing is tracked to scan")
+        api.done(na="not a git repo: nothing is tracked to scan")
     allow = list(ctx.param("allow", []))
     allowed = lambda rel: any(fnmatch.fnmatch(rel, g) for g in allow)  # noqa: E731
     findings = []

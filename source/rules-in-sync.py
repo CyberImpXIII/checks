@@ -22,7 +22,7 @@
 # even where the section sits. Wording drift around the sentences is not this
 # check's business (an audit on demand, if anyone wants one).
 # Needs the workspace top: in a lone clone it is UNCHECKED, and at the top
-# itself it is UNCHECKED (that copy is the reference).
+# itself it is n/a (that copy is the reference).
 # To pass: copy the missing section from the top-level CLAUDE.md (or re-run
 # the setup tool, whose shared-rules block carries them); for a missing rule
 # sentence, put the top's bold lead back, word for word, under your
@@ -82,7 +82,7 @@ def main():
         api.done(unchecked=f"the workspace top has no CLAUDE.md to compare with ({top})")
     mine = ctx.repo / name
     if mine.resolve() == top.resolve():
-        api.done(unchecked="this is the reference copy (the workspace top)")
+        api.done(na="this is the reference copy (the workspace top)")
     if not mine.is_file():
         api.done([f"{name}: missing"])
     ref = sections(top.read_text(errors="replace"))

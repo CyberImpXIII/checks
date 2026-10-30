@@ -16,7 +16,8 @@
   "results": {
     "0": {"status": "ok", "means": "the check ran in full and found nothing"},
     "2": {"status": "fail", "means": "one line per finding on stdout"},
-    "3": {"status": "unchecked", "means": "the check could not run (in full) here; one line on stdout says why. Never counted as a pass"}
+    "3": {"status": "unchecked", "means": "the check could not judge what is here (no workspace top, no roster names, a declaration it cannot read, an unmet contract); one line on stdout says why. Never counted as a pass. When there is nothing of the kind here at all, the check says na instead"},
+    "4": {"status": "na", "means": "nothing of this kind is here (no store declared, not a git repo, the reference copy); one line on stdout says what. A pass with its reason: the runner reports it ok with `na` true, printed n/a. Never for a check that could not judge what is here: that is unchecked"}
   },
   "_results": "Any other exit code, a timeout, or a check the runner refuses (malformed declaration, no explanation, no failing fixture) is `error`, which fails the run like `fail` does: a check that breaks is red, never green."
 }

@@ -12,8 +12,8 @@
 # matches the roster is the roster owner's gate, not this one.
 # node.json is validated first (schema/node.schema.json); one with any
 # finding is reported and its paths are not followed. No node.json is
-# UNCHECKED (not a node); so is a node.json with no `registry` and no
-# children. Children and no `registry` is a finding.
+# n/a (not a node, so no registry); so is a node.json with no `registry` and
+# no children. Children and no `registry` is a finding.
 # To pass: re-render the registry from the services.json files (the node's
 # registry is their union, never hand-edited); add a services.json to the
 # child the row is for, or drop the row; list the child in node.json.
@@ -41,14 +41,14 @@ def main():
     ctx = api.context()
     doc, found = contract.read(ctx.repo, contract.NODE)
     if doc is None and not found:
-        api.done(unchecked=f"no {contract.NODE}: not a node, so no registry to match")
+        api.done(na=f"no {contract.NODE}: not a node, so no registry to match")
     if found:
         api.done(found)
     children = [contract.norm(c) for c in doc.get("children", [])]
     if "registry" not in doc:
         if children:
             api.done([f"{contract.NODE}: names children but no `registry`: nothing to hold their services"])
-        api.done(unchecked=f"{contract.NODE} names no registry and no children")
+        api.done(na=f"{contract.NODE} names no registry and no children")
     reg = doc["registry"]
     try:
         data = json.loads((ctx.repo / reg).read_text())

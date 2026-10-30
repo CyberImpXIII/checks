@@ -1,0 +1,210 @@
+{
+ "_comment": "Every api.done(na=...) and api.done(unchecked=...) in source/, with its class; held equal by tests/test_results_classified.py. na: nothing of this kind is here (a pass with its reason). unchecked: something is here and this run could not judge it (never a pass). Classified 2026-10-30 (ELABORATION-2.4-2.6.md §1.2 part 1, Jacob: \"split\").",
+ "sites": [
+  {
+   "check": "accessor",
+   "class": "unchecked",
+   "reason": "{}'s store matches no file: no name to look for around the CLI"
+  },
+  {
+   "check": "check-json",
+   "class": "unchecked",
+   "reason": "nested inside another check-json run, which is validating this very output"
+  },
+  {
+   "check": "check-json",
+   "class": "unchecked",
+   "reason": "no {}: no `{} check --json` to validate (the contract is unmet)"
+  },
+  {
+   "check": "check-json",
+   "class": "unchecked",
+   "reason": "{} has no --json (no line of it mentions the flag): the contract is unmet"
+  },
+  {
+   "check": "check-partial",
+   "class": "unchecked",
+   "reason": "nested inside another check-partial run"
+  },
+  {
+   "check": "check-partial",
+   "class": "unchecked",
+   "reason": "no {}: no runner to hand a suite to (the contract is unmet)"
+  },
+  {
+   "check": "check-partial",
+   "class": "unchecked",
+   "reason": "{} never mentions {}: it cannot run a given suite (the contract is unmet)"
+  },
+  {
+   "check": "docs-rows",
+   "class": "unchecked",
+   "reason": "no workspace top: the tool table lives there"
+  },
+  {
+   "check": "help-matches",
+   "class": "na",
+   "reason": "{}: absent, and this is not a git repo"
+  },
+  {
+   "check": "hooks-installed",
+   "class": "unchecked",
+   "reason": "<Call>"
+  },
+  {
+   "check": "hooks-installed",
+   "class": "unchecked",
+   "reason": "`hooks copies` does not list {} as a location; its hooks went uncompared"
+  },
+  {
+   "check": "hooks-installed",
+   "class": "na",
+   "reason": "`hooks copies` expects no hook in {}; nothing to compare"
+  },
+  {
+   "check": "no-roster",
+   "class": "na",
+   "reason": "nothing in scope to scan (every file excluded, or none tracked)"
+  },
+  {
+   "check": "no-roster",
+   "class": "unchecked",
+   "reason": "paths half clean ({} files); names half not run: no roster names passed (--names), and this tool reads no roster itself"
+  },
+  {
+   "check": "no-secrets",
+   "class": "na",
+   "reason": "not a git repo: nothing is tracked to scan"
+  },
+  {
+   "check": "practices-valid",
+   "class": "unchecked",
+   "reason": "no workspace top: rows and their seams are whole, gate paths and sources went unchecked"
+  },
+  {
+   "check": "registered",
+   "class": "unchecked",
+   "reason": "<e['unchecked']>"
+  },
+  {
+   "check": "registry-matches",
+   "class": "na",
+   "reason": "no {}: not a node, so no registry to match"
+  },
+  {
+   "check": "registry-matches",
+   "class": "na",
+   "reason": "{} names no registry and no children"
+  },
+  {
+   "check": "repro",
+   "class": "na",
+   "reason": "no {}: no verb declared, so none to run (`cli-declared` reports the lag)"
+  },
+  {
+   "check": "repro",
+   "class": "unchecked",
+   "reason": "{} breaks a rule (`accessor` says which); no verb run: {}"
+  },
+  {
+   "check": "repro",
+   "class": "na",
+   "reason": "{} declares no `read` verbs: nothing is known to only read, so nothing runs twice"
+  },
+  {
+   "check": "rules-gated",
+   "class": "na",
+   "reason": "CLAUDE.md has no `## ` sections: nothing to classify"
+  },
+  {
+   "check": "rules-gated",
+   "class": "na",
+   "reason": "no CLAUDE.md here: no rules to classify"
+  },
+  {
+   "check": "rules-gated",
+   "class": "unchecked",
+   "reason": "no workspace top: sections are classified, but gate paths and plan pointers went unchecked"
+  },
+  {
+   "check": "rules-in-sync",
+   "class": "unchecked",
+   "reason": "no workspace top: nothing to compare with (lone clone)"
+  },
+  {
+   "check": "rules-in-sync",
+   "class": "unchecked",
+   "reason": "the workspace top has no CLAUDE.md to compare with ({})"
+  },
+  {
+   "check": "rules-in-sync",
+   "class": "na",
+   "reason": "this is the reference copy (the workspace top)"
+  },
+  {
+   "check": "services-valid",
+   "class": "unchecked",
+   "reason": "no {}: nothing is declared for the server to run here (the contract is unmet, never a pass)"
+  },
+  {
+   "check": "settings-tracked",
+   "class": "na",
+   "reason": "not a git repo: nothing can track .claude/settings.json here"
+  },
+  {
+   "check": "stores-classified",
+   "class": "unchecked",
+   "reason": "<lines[0]>"
+  },
+  {
+   "check": "stores-exported",
+   "class": "na",
+   "reason": "no {}: no store is declared here, so no export to verify"
+  },
+  {
+   "check": "stores-exported",
+   "class": "na",
+   "reason": "{} declares no `store` (a CLI over no store): no export to verify"
+  },
+  {
+   "check": "stores-exported",
+   "class": "unchecked",
+   "reason": "{} is not set: no data repo to verify the export against (the caller supplies it; this tool reads no instance file)"
+  },
+  {
+   "check": "stores-exported",
+   "class": "unchecked",
+   "reason": "{} item(s) could not be compared here: {}"
+  },
+  {
+   "check": "stores-readonly",
+   "class": "na",
+   "reason": "every store is SQLite (kept writable for its WAL): its mode is not judged; the store hook and `accessor` hold it"
+  },
+  {
+   "check": "stores-readonly",
+   "class": "na",
+   "reason": "no store or render is declared here by any CLI: none to judge"
+  },
+  {
+   "check": "stores-readonly",
+   "class": "unchecked",
+   "reason": "{} {}; no store judged: {}"
+  },
+  {
+   "check": "stores-readonly",
+   "class": "unchecked",
+   "reason": "{}'s store matches no file on disk: no store to judge"
+  },
+  {
+   "check": "stores-readonly",
+   "class": "unchecked",
+   "reason": "{}<IfExp>"
+  },
+  {
+   "check": "tree-clean",
+   "class": "na",
+   "reason": "not a git repo: no working tree to compare with a commit"
+  }
+ ]
+}
