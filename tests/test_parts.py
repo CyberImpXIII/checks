@@ -617,9 +617,9 @@ class Parts(Case):
         doc = json.loads(p.stdout)
         self.assertEqual((doc["version"], doc["commands"]), (parts.VERSION, sorted(parts.COMMANDS)))
         run = doc["run"]
-        self.assertEqual([o["flag"] for o in run["options"]], ["--resume", "--only", "--jobs", "--json"])
+        self.assertEqual([o["flag"] for o in run["options"]], ["--resume", "--only", "--jobs", "--json", "--record"])
         self.assertIn(f"  {run['usage']}\n", parts.__doc__, "the docstring's run line is the built one")
-        self.assertEqual(run["usage"], "parts.py run <parts.json> [--resume | --only <name>...] [--jobs <n>] [--json]")
+        self.assertEqual(run["usage"], "parts.py run <parts.json> [--resume | --only <name>...] [--jobs <n>] [--json] [--record]")
         for o in run["options"]:
             words = [o["flag"]] + (["1"] if o["value"] else [])
             with self.subTest(flag=o["flag"]):
@@ -641,7 +641,7 @@ class Parts(Case):
         saved = dict(parts.RUN_OPTIONS)
         try:
             parts.RUN_OPTIONS["--quick"] = None
-            self.assertTrue(parts.run_usage().endswith("[--json] [--quick]"), parts.run_usage())
+            self.assertTrue(parts.run_usage().endswith("[--record] [--quick]"), parts.run_usage())
             self.assertIn("--quick", [o["flag"] for o in parts.usage_doc()["run"]["options"]])
             self.assertIsNone(parts.options(["--quick"])[2])
         finally:
@@ -704,3 +704,70 @@ class ThisRepo(Case):
 def _not_zombie(pid):
     p = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True)
     return bool(p.stdout.strip()) and not p.stdout.strip().startswith("Z")
+
+
+class Record(Case):
+    """--record (remediation ra-2.5, Jacob 2026-10-30: "move it now"): the pass record the
+    git pre-commit matches, taken by the runner instead of a block copied into each dev.sh.
+    A stand-in `.githooks/check-pass` logs each call, so the test sees exactly what it was
+    asked to record, and when it was not asked at all."""
+
+    run_parts = Parts.run_parts
+
+    def setUp(self):
+        super().setUp()
+        self.base = self.tmp / "suite"
+        write(self.base / "a.txt", "a\n")
+        write(self.base / "b.txt", "b\n")
+        self.pf = self.tmp / "progress" / "check.json"
+        subprocess.run(["git", "init", "-q", str(self.base)], check=True)
+        self.calls = self.tmp / "calls"
+        write(self.base / ".githooks" / "check-pass",
+              f'#!/usr/bin/env bash\necho "$*" >> {self.calls}\n'
+              '[ "$1" = tree ] && echo T1\n[ "${FAIL_RECORD:-}" = 1 ] && [ "$1" = record ] && { echo refused >&2; exit 1; }\nexit 0\n',
+              0o755)
+
+    def said(self):
+        return self.calls.read_text().splitlines() if self.calls.exists() else []
+
+    def test_a_whole_green_run_records_the_tree_taken_before_it(self):
+        r = self.run_parts({"parts": [part("p1"), part("p2")]}, "--record")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.said(), ["tree", "record --from T1"])
+
+    def test_nothing_is_recorded_without_the_flag_or_for_a_red_run(self):
+        self.run_parts({"parts": [part("p1")]})
+        self.assertEqual(self.said(), [])
+        r = self.run_parts({"parts": [part("p1"), part("p2", run="echo FAIL: x; exit 1")]}, "--record")
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual(self.said(), ["tree"])
+
+    def test_only_check_parts_and_unchecked_record_nothing_and_say_so(self):
+        doc = {"parts": [part("p1"), part("p2")]}
+        r = self.run_parts(doc, "--record", "--only", "p1")
+        self.assertIn("check-pass: not recorded: a run with --only", r.stderr)
+        r = self.run_parts(doc, "--record", env={"CHECK_PARTS": "other.json"})
+        self.assertIn("not recorded: a CHECK_PARTS run", r.stderr)
+        self.assertEqual(self.said(), [])
+        r = self.run_parts({"parts": [part("p1"), part("p2", run="echo 'no sibling'; exit 3")]}, "--record")
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("not every part passed (1 said UNCHECKED): the pass was not recorded", r.stderr)
+        self.assertEqual(self.said(), ["tree"])
+
+    def test_a_resume_records_where_it_resumed_from(self):
+        doc = {"parts": [part("p1"), part("p2", files=["b.txt"])]}
+        self.run_parts(doc)
+        write(self.base / "b.txt", "changed\n")
+        r = self.run_parts(doc, "--resume", "--record")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.said(), ["tree", "record --from T1 --resumed-from 1/2"])
+
+    def test_a_refused_record_is_said_and_never_changes_the_exit(self):
+        r = self.run_parts({"parts": [part("p1")]}, "--record", env={"FAIL_RECORD": "1"})
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("the pass was not recorded", r.stderr)
+
+    def test_no_check_pass_in_the_repo_records_nothing_silently(self):
+        os.remove(self.base / ".githooks" / "check-pass")
+        r = self.run_parts({"parts": [part("p1")]}, "--record")
+        self.assertEqual((r.returncode, r.stderr), (0, ""))

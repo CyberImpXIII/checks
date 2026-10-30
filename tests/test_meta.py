@@ -47,7 +47,8 @@ class Meta(unittest.TestCase):
         per test module (held by tests/test_parts.py), every other documented step
         as a part that runs `./dev.sh <step>`, and no part runs a step not documented."""
         text = (TOOL_ROOT / "dev.sh").read_text()
-        self.assertIn('checkslib/parts.py" run "${CHECK_PARTS:-$HERE/check.parts.json}" "$@"', text)
+        # --record: the runner records a whole green run for the git pre-commit (ra-2.5)
+        self.assertIn('checkslib/parts.py" run "${CHECK_PARTS:-$HERE/check.parts.json}" --record "$@"', text)
         parts = json.loads((TOOL_ROOT / "check.parts.json").read_text())["parts"]
         steps = {m[1] for p in parts if (m := re.fullmatch(r"\./dev\.sh (\S+)", p["run"]))}
         usage = text.split("cat <<'EOF'", 1)[1].split("\nEOF", 1)[0]
