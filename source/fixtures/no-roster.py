@@ -17,6 +17,8 @@ def passing(t):
         "self.py": "PROG = 'x'\n",
         "todo.json": STORE,
         "todo-history.json": STORE,
+        "todo-records.json": STORE,
+        "todo-writes.jsonl": f'{{"verb": "rename-repo", "rename": {{"old": ".x", "new": "{NAME}"}}}}\n',
     })
     return Fixture(repo, names=[NAME, "x"])
 
