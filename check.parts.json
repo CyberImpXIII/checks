@@ -18,6 +18,7 @@
   {"name": "test.results_classified", "run": "python3 -m unittest tests.test_results_classified", "files": ["tests/test_results_classified.py", "tests/results-classified.json"], "except": ["tests/", "TODO.md"]},
   {"name": "test.hooks_installed", "run": "python3 -m unittest tests.test_hooks_installed", "files": ["tests/test_hooks_installed.py"], "except": ["tests/", "TODO.md"]},
   {"name": "test.regen", "run": "python3 -m unittest tests.test_regen", "files": ["tests/test_regen.py"], "except": ["tests/", "TODO.md"]},
+  {"name": "test.rendered_matches", "run": "python3 -m unittest tests.test_rendered_matches", "files": ["tests/test_rendered_matches.py"], "except": ["tests/", "TODO.md"]},
   {"name": "test.rules_in_sync", "run": "python3 -m unittest tests.test_rules_in_sync", "files": ["tests/test_rules_in_sync.py"], "except": ["tests/", "TODO.md"],
    "always": "reads the workspace top's CLAUDE.md, outside this repo"},
   {"name": "test.no_secrets", "run": "python3 -m unittest tests.test_no_secrets", "files": ["tests/test_no_secrets.py"], "except": ["tests/", "TODO.md"],

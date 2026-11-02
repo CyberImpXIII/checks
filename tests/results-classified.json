@@ -97,6 +97,41 @@
    "reason": "{} names no registry and no children"
   },
   {
+   "check": "rendered-matches",
+   "class": "unchecked",
+   "reason": "`setup fanout {}` ran past {}s: the renders went unjudged"
+  },
+  {
+   "check": "rendered-matches",
+   "class": "unchecked",
+   "reason": "nested inside a rebuild, which is what this check runs: not rebuilt again"
+  },
+  {
+   "check": "rendered-matches",
+   "class": "unchecked",
+   "reason": "no {} and no setup tool at {}: nothing says what is rendered here (never a pass)"
+  },
+  {
+   "check": "rendered-matches",
+   "class": "unchecked",
+   "reason": "no {} and no workspace top holding setup: nothing says what is rendered here (never a pass)"
+  },
+  {
+   "check": "rendered-matches",
+   "class": "unchecked",
+   "reason": "setup could not judge every render here: <Call>"
+  },
+  {
+   "check": "rendered-matches",
+   "class": "unchecked",
+   "reason": "setup named no fanout components (its refusal of an unknown one said: {}): the renders went unjudged"
+  },
+  {
+   "check": "rendered-matches",
+   "class": "na",
+   "reason": "setup renders none of its components ({}) into {}"
+  },
+  {
    "check": "repro",
    "class": "na",
    "reason": "no {}: no verb declared, so none to run (`cli-declared` reports the lag)"
