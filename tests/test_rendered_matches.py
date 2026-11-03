@@ -20,6 +20,7 @@ if ! jq -e --arg c "$c" 'has($c)' "$here/answers.json" >/dev/null; then
 fi
 a=$(jq -c --arg c "$c" '.[$c]' "$here/answers.json")
 case "$a" in
+  \"refuse:*) jq -r --arg c "$c" '.[$c] | ltrimstr("refuse:")' "$here/answers.json" >&2; exit 2 ;;
   \"*) jq -r --arg c "$c" '.[$c]' "$here/answers.json" ;;
   *) jq -c --arg c "$c" '{component: $c, dry_run: true, repos: [.[$c]]}' "$here/answers.json" ;;
 esac
@@ -69,6 +70,22 @@ class AsksSetup(Case):
         res = self.one(ws2, r2)
         self.assertEqual(res["status"], "unchecked", res)
         self.assertIn("parts: failed: the source moved", res["lines"][0])
+
+    def test_a_component_rendered_from_the_names_record_is_named_not_judged(self):
+        """setup refuses to fan out siblings without --names (PLAN-O18); this check never reads
+        the names record, so it names the component and judges the rest."""
+        ws, r = self.ws({"rules": row("unchanged"), "parts": row("unchanged"),
+                         "siblings": "refuse:setup fanout: fanout siblings: --names FILE is required (the sibling "
+                                     "table is rendered from the names record, never looked for)"})
+        res = self.one(ws, r)
+        self.assertEqual(res["status"], "ok", res)
+        self.assertEqual(res["lines"], ["renders match setup's: rules, parts; not judged here: siblings (rendered "
+                                        "from the names record, which setup is handed and this check never reads)"])
+        ws2 = self.tmp / "ws2"
+        ws2, r2 = ws2, repo(ws2 / "r")
+        write(ws2 / "tools" / "setup" / "setup", FAKE, 0o755)
+        write(ws2 / "tools" / "setup" / "answers.json", json.dumps({"parts": "refuse:setup fanout: something else"}))
+        self.assertEqual(self.one(ws2, r2)["status"], "unchecked")
 
     def test_a_repo_carrying_none_is_na(self):
         ws, r = self.ws({"rules": row("undeclared"), "parts": row("undeclared")})

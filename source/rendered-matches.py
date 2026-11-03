@@ -45,6 +45,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from checkslib import api, contract, regen  # noqa: E402
 
 SETUP_CLI = Path("tools/setup/setup")
+# setup refuses to fan out a component rendered from the names record without one (siblings,
+# PLAN-O18); this check never reads that record, so such a component is named, not judged here
+NEEDS_NAMES = "--names FILE is required"
 TIMEOUT = 240
 ONE_OF = re.compile(r"not a fanout component \(one of: ([^)]*)\)")
 
@@ -70,7 +73,7 @@ def components(ctx, cli):
 
 
 def judge(ctx, cli):
-    findings, ok, unjudged, carried = [], [], [], []
+    findings, ok, unjudged, carried, elsewhere = [], [], [], [], []
     names = components(ctx, cli)
     for c in names:
         code, out, err = fanout(ctx, cli, [c, "--repos", str(ctx.repo), "--dry-run", "--json"])
@@ -79,6 +82,9 @@ def judge(ctx, cli):
             row = doc["repos"][0]
             status, detail = row["status"], row.get("detail") or ""
         except (ValueError, KeyError, IndexError, TypeError):
+            if code == 2 and NEEDS_NAMES in (err or ""):
+                elsewhere.append(c)
+                continue
             unjudged.append(f"{c}: setup gave no report (exit {code}): {(err or out).strip()[-160:]}")
             continue
         if status == "undeclared":
@@ -98,7 +104,9 @@ def judge(ctx, cli):
         api.done(unchecked="setup could not judge every render here: " + "; ".join(unjudged))
     if not carried:
         api.done(na=f"setup renders none of its components ({', '.join(names)}) into {ctx.rel}")
-    print(f"renders match setup's: {', '.join(ok)}")
+    print(f"renders match setup's: {', '.join(ok)}" + (
+        f"; not judged here: {', '.join(elsewhere)} (rendered from the names record, which setup is handed "
+        "and this check never reads)" if elsewhere else ""))
     api.done()
 
 
