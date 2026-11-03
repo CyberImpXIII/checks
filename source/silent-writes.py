@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # checks: applies_to=roles:audit params=allow
 # Proves: no shell write in the repo's code loses its failure silently
-# (RESEARCH-writers.md Q4 "silent" rows; Options 5). The scan is
+# (research rs-100 "silent" rows; topic writers, option 5). The scan is
 # checkslib/writers.py, the same one `checks writers` prints: a `>`/`>>`/
 # `cp`/`tee` write whose stderr goes to /dev/null and whose failure is not
 # handled on its line (no `||` other than `|| true` / `|| :`, no `&&`, not an

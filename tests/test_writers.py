@@ -1,5 +1,5 @@
-"""`checks writers` and `silent-writes` (RESEARCH-writers.md Q4, could-not-settle 1):
-each primitive classified as Q1 measured it, the lines that look like writes
+"""`checks writers` and `silent-writes` (research rs-100; topic writers, could-not-settle 1):
+each primitive classified as rs-97 measured it, the lines that look like writes
 but are not, a write site added to a repo changing the report, and the
 `allow` param shown to change the check's result both ways."""
 import json

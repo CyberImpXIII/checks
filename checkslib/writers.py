@@ -1,4 +1,4 @@
-"""The write-site scan (RESEARCH-writers.md Q4, "could not settle" 1): every line
+"""The write-site scan (research rs-100; topic writers, "could not settle" 1): every line
 in a repo's code that writes a file, classified by its primitive and by what
 that primitive does to a file at mode 0444 (Q1's probe). Read by `checks
 writers` (the report) and the `silent-writes` check (the gate on one class).

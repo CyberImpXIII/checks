@@ -18,8 +18,8 @@ USAGE = """checks <command>   the generic pre-commit gates, one source, run per 
                                      grid, then the findings of every red cell
   checks fixtures [--json]           every check against its passing and failing fixture
   checks writers [PATH] [--json]     every write site in PATH's code (default .), file:line, its
-                                     primitive and what it does at mode 0444 (RESEARCH-writers.md
-                                     Q4); a scan to read at each line, not a verdict; exit 0
+                                     primitive and what it does at mode 0444 (research
+                                     rs-100); a scan to read at each line, not a verdict; exit 0
   checks stores [ROOT] [--json]      every store in every repo under ROOT (default: the workspace top)
                                      with its kind or none, and what stores-classified finds there,
                                      regen aside (PLAN-services.md ST5, the inventory); a report: exit 0
