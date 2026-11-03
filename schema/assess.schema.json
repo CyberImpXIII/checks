@@ -1,0 +1,50 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "assess.schema.json",
+ "title": "a candidate's assess.json",
+ "description": "The evidence `checks assess <candidate> --subject candidate` reads (PLAN-services.md §3 X2): what the bench's probes printed for each practice row, run against the candidate's installed tree inside the sandbox, and the explanations recorded where no probe can. The bench writes it (addon-bench `./dev.sh assess <c>`, §4 step 9.3) into the candidate's folder as assess.json, or hands it over with --evidence; checks assess reads it, never runs a probe. Beside it, the candidate's folder holds the bench's candidate.json, of which only `sha256` (else `commit`: the pin) and `verbs` are read. A probe entry decides its row (exit 0 held, else unjustified); a record is used only where no probe decided, as a recorded cell is in `checks practices`. Every row id must be a live practice row with a `subject` (checked by checks assess against the registry, not here). This is tools/checks' contract; the bench's owner may ask for it to change.",
+ "type": "object",
+ "additionalProperties": false,
+ "required": ["pin", "probes", "records"],
+ "properties": {
+  "_comment": {"type": "string"},
+  "pin": {"type": "string", "minLength": 1, "description": "The pin the probes ran against: candidate.json's `sha256`, or its `commit` when it has no sha256. Evidence for another pin is no evidence for this one."},
+  "probes": {
+   "type": "array",
+   "description": "One entry per probe run, per row it holds: a probe that holds two rows is two entries.",
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["row", "probe", "exit", "lines"],
+    "properties": {
+     "row": {"type": "string", "minLength": 1, "description": "The practice row id the probe holds."},
+     "probe": {"type": "string", "minLength": 1, "description": "The probe file, a path inside the candidate's folder."},
+     "verb": {"type": "string", "minLength": 1, "description": "The candidate verb this run covers. Once any entry of a row names a verb, every verb candidate.json declares needs an entry of that row, or the row is unjustified (the declared verb has no probe)."},
+     "exit": {"type": "integer", "description": "The probe's exit code: 0 held, anything else unjustified (a sandbox that refused a write exits non-zero, and the refusal is the evidence)."},
+     "lines": {"type": "array", "items": {"type": "string"}, "description": "What the probe printed, capped by the bench; the first line is shown as the cell's why."}
+    }
+   }
+  },
+  "records": {
+   "type": "array",
+   "description": "An explanation where no probe can hold a row (A6: never a guess).",
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["row", "state", "why"],
+    "properties": {
+     "row": {"type": "string", "minLength": 1},
+     "state": {"enum": ["justified", "unjustified"]},
+     "why": {"type": "string", "minLength": 1, "description": "How the row holds for this candidate, or why it does not; never blank."}
+    }
+   }
+  }
+ },
+ "x-rules": {
+  "pin-matches": "$.pin is the pin candidate.json beside it declares (`sha256`, else `commit`); no candidate.json or no pin there is a finding",
+  "probe-inside": "every `probe` is a path inside the candidate's folder and a file there",
+  "verb-declared": "every `verb` is one candidate.json's `verbs` lists",
+  "unique": "no probe entry twice (row, probe and verb alike), no row recorded twice",
+  "why-said": "every record's `why` says something: not blank"
+ }
+}

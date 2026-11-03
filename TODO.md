@@ -304,6 +304,32 @@
 
 ## Open decisions
 
+- checks assess (tl-705, 2026-11-03, PLAN-services.md §3 X1-X2, §4 step 9.2):
+  built as `checks assess <path> --subject repo|candidate` (checkslib/assess.py,
+  schema/assess.schema.json, tests/test_assess.py, the assess mutants in
+  tests/test_contract_files.py). Open around it:
+  - naming: the done-when says "gated"; the cell prints practices.STATES'
+    `held` (one vocabulary with `checks practices`). Rename both or neither.
+  - neither assess nor practices reads the ledger's justification records
+    (see "Assurance ledger" below); a repo row justified only there reads
+    unknown, a gap.
+  - not a cli.json read verb (so repro does not hold it): it needs
+    `read.fixture` (a candidate folder with candidate.json + assess.json),
+    and that fixture becomes the scratch copy every other read verb runs on
+    too. Decide whether that is acceptable, then declare `assess` with
+    `["{fixture}", "--subject", "candidate", "--json"]`.
+  - the interface with addon-bench (tl-706, step 9.3): its `./dev.sh assess`
+    must write `<candidate>/assess.json` to the schema; reported to it in the
+    tl-705 report. Only candidate.json's `sha256` (else `commit`) and `verbs`
+    are read; a rename there makes every candidate unassessable (exit 2),
+    not silently unknown.
+  - probes are not run here and their exits are trusted: a probe that
+    passes while testing nothing reads held. Re-running them would need the
+    bench's sandbox, which this tool must not depend on.
+  - first runs (2026-11-03): graphify (no evidence) exit 1, 12 rows unknown;
+    `assess . --subject repo` (the top) exit 1, 52 rows: held 22, unjustified
+    1, unknown 29.
+
 - Assurance ledger (tl-321, 2026-10-19, PLAN-architecture.md §6a, §9 step 6):
   built as `checks ledger` over `state/ledger.db` (checkslib/ledger.py,
   tests/test_ledger.py). Open around it:

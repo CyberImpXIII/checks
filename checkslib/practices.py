@@ -559,20 +559,26 @@ def cells(rows, locs, results, overrides=None):
         out[p["id"]] = {}
         sup = [r for r in rows if r.get("principle") == p["id"]]
         for loc in where(p, locs):
-            here = [(r["id"], out[r["id"]][loc]) for r in sup if loc in out[r["id"]]]
-            bad = [i for i, c in here if c["state"] == "unjustified"]
-            unk = [i for i, c in here if c["state"] == "unknown"]
-            if not here:
-                c = {"state": "unknown", "why": "no supporting row applies here"}
-            elif bad:
-                c = {"state": "unjustified", "why": f"{len(bad)} of {len(here)} supporting rows unjustified: {', '.join(bad)}"}
-            elif unk:
-                c = {"state": "unknown", "why": f"{len(unk)} of {len(here)} supporting rows unknown"}
-            else:
-                c = {"state": "held", "why": f"all {len(here)} supporting rows hold"}
-            c["derived"] = True
-            out[p["id"]][loc] = c
+            out[p["id"]][loc] = rollup([(r["id"], out[r["id"]][loc]) for r in sup if loc in out[r["id"]]])
     return out
+
+
+def rollup(here):
+    """A principle's cell from its supporting rows' cells [(row id, cell)] at
+    one place: any unjustified makes it unjustified, else any unknown unknown,
+    else held. `checks assess` rolls a candidate's rows up through this too."""
+    bad = [i for i, c in here if c["state"] == "unjustified"]
+    unk = [i for i, c in here if c["state"] == "unknown"]
+    if not here:
+        c = {"state": "unknown", "why": "no supporting row applies here"}
+    elif bad:
+        c = {"state": "unjustified", "why": f"{len(bad)} of {len(here)} supporting rows unjustified: {', '.join(bad)}"}
+    elif unk:
+        c = {"state": "unknown", "why": f"{len(unk)} of {len(here)} supporting rows unknown"}
+    else:
+        c = {"state": "held", "why": f"all {len(here)} supporting rows hold"}
+    c["derived"] = True
+    return c
 
 
 def red(rows, table):

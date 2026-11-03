@@ -21,7 +21,9 @@ SCHEMA_DIR = TOOL_ROOT / "schema"
 SERVICES, CLI, NODE = "services.json", "cli.json", "node.json"
 FILES = (SERVICES, CLI, NODE)
 VERIFY = "verify"                   # not a file: what `<cli> verify --json` prints (stores-exported)
-SCHEMAS = FILES + (VERIFY,)
+ASSESS = "assess.json"              # a candidate's evidence, read by `checks assess` (checkslib/assess.py)
+CANDIDATE = "candidate.json"        # the bench's manifest beside it: only its pin and `verbs` are read
+SCHEMAS = FILES + (VERIFY, ASSESS)
 GLOB = set("*?[")
 
 
@@ -386,8 +388,81 @@ def _verify_unique(doc, repo):
     return _dupes([i["item"] for i in doc["items"]], "$.items", "item")
 
 
+# --- a candidate's assess.json -------------------------------------------------
+
+def candidate_manifest(folder):
+    """(manifest, why): the bench's candidate.json in `folder`, or None with why."""
+    p = Path(folder) / CANDIDATE
+    try:
+        doc = json.loads(p.read_text())
+    except OSError:
+        return None, f"no {CANDIDATE} in {folder}"
+    except ValueError as e:
+        return None, f"{CANDIDATE} does not parse ({e})"
+    if not isinstance(doc, dict):
+        return None, f"{CANDIDATE} is not an object"
+    return doc, None
+
+
+def candidate_pin(manifest):
+    """The pin a candidate.json declares: its `sha256`, else its `commit`; None if neither."""
+    for k in ("sha256", "commit"):
+        v = manifest.get(k)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return None
+
+
+def candidate_verbs(manifest):
+    v = manifest.get("verbs")
+    return [x for x in v if isinstance(x, str)] if isinstance(v, list) else None
+
+
+def _assess_pin(doc, folder):
+    m, why = candidate_manifest(folder)
+    if m is None:
+        return [f"$.pin: {why}: nothing to match the pin against"]
+    pin = candidate_pin(m)
+    if pin is None:
+        return [f"$.pin: {CANDIDATE} declares no `sha256` or `commit`"]
+    return [] if doc["pin"] == pin else [f"$.pin: `{doc['pin'][:16]}` is not {CANDIDATE}'s pin `{pin[:16]}`"]
+
+
+def _assess_probe_inside(doc, folder):
+    out = []
+    for i, p in enumerate(doc["probes"]):
+        rel = p["probe"]
+        if not inside(rel):
+            out.append(f"$.probes[{i}].probe: `{rel}` is not a path inside the candidate's folder")
+        elif not (Path(folder) / rel).is_file():
+            out.append(f"$.probes[{i}].probe: `{rel}` is not a file in the candidate's folder")
+    return out
+
+
+def _assess_verb_declared(doc, folder):
+    m, _ = candidate_manifest(folder)
+    verbs = candidate_verbs(m) if m else None
+    out = []
+    for i, p in enumerate(doc["probes"]):
+        if "verb" in p and (verbs is None or p["verb"] not in verbs):
+            out.append(f"$.probes[{i}].verb: `{p['verb']}` is not a verb {CANDIDATE} lists")
+    return out
+
+
+def _assess_unique(doc, folder):
+    keys = [f"{p['row']} {p['probe']} {p.get('verb', '-')}" for p in doc["probes"]]
+    return (_dupes(keys, "$.probes", "probe entry")
+            + _dupes([r["row"] for r in doc["records"]], "$.records", "row"))
+
+
+def _assess_why_said(doc, folder):
+    return [f"$.records[{i}].why: blank" for i, r in enumerate(doc["records"]) if not r["why"].strip()]
+
+
 RULES = {
     VERIFY: {"unique": _verify_unique},
+    ASSESS: {"pin-matches": _assess_pin, "probe-inside": _assess_probe_inside,
+             "verb-declared": _assess_verb_declared, "unique": _assess_unique, "why-said": _assess_why_said},
     SERVICES: {"one-check": _one_check, "run-inside": _run_inside, "run-executable": _run_executable,
                "verb-implemented": _services_verbs, "unique": _services_unique, "write-declared": _write_declared,
                "description-one-line": _description_one_line, "stores-declared": _stores_declared},

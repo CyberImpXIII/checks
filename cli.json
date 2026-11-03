@@ -1,5 +1,5 @@
 {
-  "_comment": "This repo's CLI and verbs (PLAN-architecture.md §12.1), and its one store: the assurance ledger (PLAN-architecture.md §6a, §9 step 6), a dynamic SQLite store written only by `checks ledger` (checkslib/ledger.py, accessor's `impl`), gitignored under state/. `list`, `writers` and `practices --rows` are the read verbs: `run`/`all`/`one`/`fixtures` run checks (repro among them), so they are not declared here; `stores` and `tools` read but walk the whole workspace, which repro would do twice pre-commit, so they are not declared either; `practices` runs the checks its rows name across the whole workspace (and `--import`/`--lower` write gates.json and the baseline), so only its `--rows` form (the registry read and validated, no check run) is declared; `ledger` writes its store (record, justify) and its `show` reads git live (staleness), so it is not one either.",
+  "_comment": "This repo's CLI and verbs (PLAN-architecture.md §12.1), and its one store: the assurance ledger (PLAN-architecture.md §6a, §9 step 6), a dynamic SQLite store written only by `checks ledger` (checkslib/ledger.py, accessor's `impl`), gitignored under state/. `list`, `writers` and `practices --rows` are the read verbs: `run`/`all`/`one`/`fixtures` run checks (repro among them), so they are not declared here; `stores` and `tools` read but walk the whole workspace, which repro would do twice pre-commit, so they are not declared either; `practices` runs the checks its rows name across the whole workspace (and `--import`/`--lower` write gates.json and the baseline), so only its `--rows` form (the registry read and validated, no check run) is declared; `assess` with `--subject repo` runs the checks the rows name, and with `--subject candidate` reads a candidate's folder in another repo (the bench's), with no fixture declared yet (TODO.md \"checks assess\"), so it is not one either; `ledger` writes its store (record, justify) and its `show` reads git live (staleness), so it is not one either.",
   "cli": "checks",
   "store": [
     "state/ledger.db"
@@ -15,6 +15,7 @@
     "stores",
     "tools",
     "practices",
+    "assess",
     "ledger"
   ],
   "kinds": {

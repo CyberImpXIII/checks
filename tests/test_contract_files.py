@@ -116,6 +116,12 @@ def _read_verb(d, **spec):
     d["read"]["verbs"]["list"].update(spec)
 NODEDOC = {"rebuild": ["true"], "generated": ["out.txt"], "record": ["*.md"], "children": ["kid"], "registry": "reg.json"}
 VERIFYDOC = {"items": [{"item": "a", "status": "same"}, {"item": "b", "status": "differs", "detail": "line 2"}]}
+# A candidate's evidence (checks assess); Rules.setUp writes the candidate.json and probe beside it.
+CANDIDATEDOC = {"name": "c", "sha256": "abc123", "verbs": ["build", "query"]}
+ASSESSDOC = {"_comment": "prose", "pin": "abc123",
+             "probes": [{"row": "r1", "probe": "probes/p.sh", "verb": "build", "exit": 0, "lines": ["ok"]},
+                        {"row": "r1", "probe": "probes/p.sh", "verb": "query", "exit": 1, "lines": []}],
+             "records": [{"row": "r2", "state": "justified", "why": "it writes nothing"}]}
 
 
 def _svc(d):
@@ -160,6 +166,13 @@ RULE_MUTANTS = [
     (contract.NODE, "generated-exact", lambda d: d["generated"].append("gen/*.txt"), "`gen/*.txt` is a glob"),
     (contract.NODE, "disjoint", lambda d: d["generated"].append("kid/x.txt"), "`kid/x.txt` lies under a child"),
     (contract.VERIFY, "unique", lambda d: d["items"].append({"item": "a", "status": "same"}), "item `a` given twice"),
+    (contract.ASSESS, "pin-matches", lambda d: d.update(pin="old"), "$.pin: `old` is not candidate.json's pin `abc123`"),
+    (contract.ASSESS, "probe-inside", lambda d: d["probes"][0].update(probe="../p.sh"), "`../p.sh` is not a path inside"),
+    (contract.ASSESS, "probe-inside", lambda d: d["probes"][0].update(probe="probes/gone.sh"), "`probes/gone.sh` is not a file"),
+    (contract.ASSESS, "verb-declared", lambda d: d["probes"][0].update(verb="zap"), "`zap` is not a verb candidate.json lists"),
+    (contract.ASSESS, "unique", lambda d: d["probes"].append(dict(d["probes"][0])), "probe entry `r1 probes/p.sh build` given twice"),
+    (contract.ASSESS, "unique", lambda d: d["records"].append(dict(d["records"][0])), "row `r2` given twice"),
+    (contract.ASSESS, "why-said", lambda d: d["records"][0].update(why="  "), "$.records[0].why: blank"),
 ]
 
 
@@ -171,7 +184,10 @@ class Rules(Case):
         cli(self.r / "store.sh", "add", "list", "drop")
         (self.r / "fx").mkdir()
         write(self.r / "plain.txt", "x\n")
-        self.clean = {contract.SERVICES: SERVICES_ALL, contract.CLI: CLIDOC_ALL, contract.NODE: NODEDOC, contract.VERIFY: VERIFYDOC}
+        write(self.r / contract.CANDIDATE, json.dumps(CANDIDATEDOC))
+        write(self.r / "probes" / "p.sh", "#!/bin/sh\n", 0o755)
+        self.clean = {contract.SERVICES: SERVICES_ALL, contract.CLI: CLIDOC_ALL, contract.NODE: NODEDOC, contract.VERIFY: VERIFYDOC,
+                      contract.ASSESS: ASSESSDOC}
         for name, doc in self.clean.items():
             write(self.r / name, json.dumps(doc))
 

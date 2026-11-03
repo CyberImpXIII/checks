@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-from checkslib import api, decl, ledger, practices, registry, runner, selftest, stores, writers
+from checkslib import api, assess, decl, ledger, practices, registry, runner, selftest, stores, writers
 
 USAGE = """checks <command>   the generic pre-commit gates, one source, run per repo or from the top
 
@@ -40,6 +40,17 @@ USAGE = """checks <command>   the generic pre-commit gates, one source, run per 
                                      --import FILE: the rows of a PRACTICES-rows.md into gates.json,
                                      blocked ids left out, recorded cells kept;
                                      --registry FILE / --baseline FILE: others than this repo's (tests)
+  checks assess <path> --subject repo|candidate [--json]
+                                     one assessor, one registry (PLAN-services.md §3 X1-X2): the cell
+                                     (held | justified | unjustified | unknown) of every live practice
+                                     row that applies, seam and behaviour rows apart, principles rolled
+                                     up; repo: the rows its location takes, earned as `checks practices`
+                                     earns them (its checks run now); candidate: the rows with a subject,
+                                     from the bench's evidence (<path>/assess.json or --evidence FILE,
+                                     schema/assess.schema.json) checked against <path>/candidate.json;
+                                     exit 0 no gap, 1 a gap (repo: a red cell; candidate: a seam row not
+                                     held, a behaviour row neither held nor justified), 2 cannot assess;
+                                     --registry FILE: another registry (tests)
   checks ledger record [PATH] [--check FILE]
                                      the assurance ledger (PLAN-architecture.md §6a): one run of the repo
                                      at PATH into this repo's SQLite store: its gates (run now, with
@@ -455,6 +466,60 @@ def cmd_practices(a):
     return rc
 
 
+ASSESS_ONLY = {"candidate": (("names", "--names"),), "repo": (("evidence", "--evidence"),)}
+BAR = {"seam": "held (a seam row must be gated)", "behaviour": "held or justified",
+       "other": "held or justified", "principles": "rolled up from the rows above; never a gap"}
+
+
+def cmd_assess(a):
+    """`checks assess <path> --subject repo|candidate` (PLAN-services.md §3 X2):
+    the four-state cell of every practice row that applies, seam and behaviour
+    rows apart. Exit 0 no gap, 1 a gap, 2 when it cannot assess."""
+    prog = f"checks assess --subject {a.subject}"
+    given = [flag for attr, flag in ASSESS_ONLY[a.subject] if getattr(a, attr)]
+    if given:
+        print(f"{prog}: {', '.join(given)} would be ignored for this subject; drop it", file=sys.stderr)
+        return 2
+    reg = Path(a.registry) if a.registry else practices.REGISTRY
+    path = Path(a.path).resolve()
+    if not path.is_dir():
+        print(f"{prog}: {a.path}: no such folder", file=sys.stderr)
+        return 2
+    a.path = None                   # _registry reads a.path as the workspace top: here it is --root or two up
+    block, ws, _ = _registry(a, reg, prog, "cells")
+    if block is None:
+        return 2
+    if a.subject == "repo":
+        if ws is None or not ws.is_dir():
+            print(f"{prog}: no workspace top (this tool is not in a tools/ folder); pass --root", file=sys.stderr)
+            return 2
+        rep, why = assess.assess_repo(block["rows"], path, ws, a.source, _names(a))
+    else:
+        rep, why = assess.assess_candidate(block["rows"], path, a.evidence)
+    if rep is None:
+        print(f"{prog}: {why}", file=sys.stderr)
+        return 2
+    rc = 1 if rep["gaps"] else 0
+    if a.json:
+        print(json.dumps(rep, indent=1))
+        return rc
+    rows = {r["id"]: r for r in rep["rows"]}
+    who = rep.get("location") or (rep["candidate"]["name"] or path.name)
+    print(f"checks assess {who} --subject {a.subject} ({reg.name})")
+    for g, ids in rep["groups"].items():
+        print(f"\n{g} ({len(ids)} row(s); bar: {BAR[g]})")
+        for i in ids:
+            c = rows[i]["cell"]
+            print(f"  {i:<30} {c['state']:<12}{' GAP' if rows[i]['gap'] else '    '} {c['why'][:150]}")
+        if not ids:
+            print("  (none)")
+    n = rep["counts"]
+    print(f"\n{prog}: {sum(n.values())} row(s): " + ", ".join(f"{s} {n[s]}" for s in practices.STATES)
+          + f"; {len(rep['gaps'])} gap(s)" + (f": {_short(rep['gaps'], 10)}" if rep["gaps"] else "")
+          + ("; " + "; ".join(rep["notes"]) if rep["notes"] else ""))
+    return rc
+
+
 def _ledger_args(argv):
     p = argparse.ArgumentParser(prog="checks ledger")
     sub = p.add_subparsers(dest="action", required=True)
@@ -563,7 +628,7 @@ def cmd_ledger(argv):
 
 COMMANDS = {"list": cmd_list, "explain": cmd_explain, "run": cmd_run, "one": cmd_one,
             "all": cmd_all, "fixtures": cmd_fixtures, "writers": cmd_writers, "stores": cmd_stores,
-            "tools": cmd_tools, "practices": cmd_practices, "ledger": cmd_ledger}
+            "tools": cmd_tools, "practices": cmd_practices, "assess": cmd_assess, "ledger": cmd_ledger}
 
 
 def main(argv):
@@ -598,6 +663,13 @@ def main(argv):
         p.add_argument("--lower", action="store_true")
         p.add_argument("--import", dest="import_md")
         p.add_argument("--rows", action="store_true")
+    if argv[0] == "assess":
+        p.add_argument("path")
+        p.add_argument("--subject", required=True, choices=assess.SUBJECTS)
+        p.add_argument("--root")
+        p.add_argument("--names")
+        p.add_argument("--registry")
+        p.add_argument("--evidence")
     if argv[0] in ("run", "one", "all"):
         p.add_argument("path", nargs="?")
         p.add_argument("--root")
