@@ -152,6 +152,7 @@
      "in": ["."], "kind": "gate", "how": "block",
      "gate": "tools/hooks/source/hooks/prefer-recipes.sh", "test": "tools/hooks/source/hooks/test-prefer-recipes.sh",
      "note": "§3 row 20: the one host-based case"},
+    {"id": "research-renders-top", "section": "Prefer the tools built here", "rule": "none is written by hand", "in": ["."], "kind": "gate", "how": "check", "gate": "tools/checks/source/research-renders.py", "test": "tools/checks/source/fixtures/research-renders.py", "note": "external audit ra-29.1 (Jacob 2026-11-03)"},
     {"id": "prefer-tools", "section": "Prefer the tools built here", "rule": "check whether a tool in this folder already does the job",
      "in": ["."], "kind": "prose",
      "why": "whether an existing tool fits a task is a judgement; only the host-based scraper case can be matched by a hook (PLAN-hard-gates.md §3 row 20)"},
