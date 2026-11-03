@@ -147,6 +147,11 @@
    "reason": "{} declares no `read` verbs: nothing is known to only read, so nothing runs twice"
   },
   {
+   "check": "research-renders",
+   "class": "unchecked",
+   "reason": "no workspace top: the hand-written research documents lived there"
+  },
+  {
    "check": "rules-gated",
    "class": "na",
    "reason": "CLAUDE.md has no `## ` sections: nothing to classify"
