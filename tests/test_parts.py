@@ -46,8 +46,10 @@ class Parts(Case):
 
     def run_parts(self, doc, *flags, env=None, timeout=120):
         path = write(self.base / "parts.json", json.dumps(doc) if not isinstance(doc, str) else doc)
-        e = {k: v for k, v in os.environ.items() if k not in ("PROGRESS_FILE", "PARTS_MAX_AGE", "PARTS_RUNTIME")}
+        e = {k: v for k, v in os.environ.items()
+             if k not in ("PROGRESS_FILE", "PARTS_MAX_AGE", "PARTS_RUNTIME", "PARTS_BUDGET_S", "PARTS_FULL_LOCK")}
         e["PROGRESS_FILE"] = str(self.pf)
+        e["PARTS_FULL_LOCK"] = str(self.tmp / "lock" / "parts-full.lock")   # never the machine's own lock
         e.update(env or {})
         return subprocess.run([sys.executable, str(PARTS), "run", str(path), *flags], capture_output=True, text=True,
                               env=e, stdin=subprocess.DEVNULL, timeout=timeout)
@@ -89,6 +91,9 @@ class Parts(Case):
             "part p: `uses` value 'Serial' is not browser, serial or store:<name>": {"parts": [part("p", uses=["Serial"])]},
             "part p: `uses` value 'store:' is not": {"parts": [part("p", uses=["store:"])]},
             "defaults: unknown key `uses`": {"defaults": {"uses": ["serial"]}, "parts": [part("p")]},
+            "part p: `full` must say why": {"parts": [part("p", full=" ")]},
+            "part q: `full` must say why": {"parts": [part("p"), part("q", full=True)]},
+            "defaults: unknown key `full`": {"defaults": {"full": "slow"}, "parts": [part("p")]},
         }
         for want, doc in cases.items():
             with self.subTest(fault=want):
@@ -584,6 +589,7 @@ class Parts(Case):
         for flags, said in [(("--only", "nope"), "--only nope: no part of that name"),
                             (("--only",), "--only needs a part name"),
                             (("--only", "p1", "--resume"), "--only and --resume together"),
+                            (("--full", "--only", "p1"), "--only and --full together"),
                             (("--bogus",), "unknown option --bogus"),
                             (("--jobs", "0"), "--jobs needs a whole number above 0, not '0'"),
                             (("--jobs", "two"), "--jobs needs a whole number above 0, not 'two'"),
@@ -595,6 +601,178 @@ class Parts(Case):
             self.assertIn(said, r.stderr, flags)
             r = self.run_parts(doc, *flags, "--json")
             self.assertEqual((r.returncode, checkjson.validate(r.stdout, r.returncode)), (2, []), flags)
+
+    # ---- full, the budget and the full-run lock (PLAN-check-progress.md §13) --
+
+    def lock(self):
+        return self.tmp / "lock" / "parts-full.lock"
+
+    def test_a_full_part_is_skipped_by_a_plain_run_and_run_by_full(self):
+        doc = {"parts": [part("p1", run="echo p1 >> ran"), part("p2", run="echo p2 >> ran", full="takes an hour"),
+                         part("p3", run="echo p3 >> ran")]}
+        r = self.run_parts(doc)
+        self.assertEqual(((self.base / "ran").read_text().split(), r.returncode), (["p1", "p3"], 0), r.stdout)
+        out = r.stdout.splitlines()
+        self.assertIn("full  p2 (not run: takes an hour; --full runs it)", out)
+        self.assertEqual(out[-1], "check: 2 of 2 passed; full, not run: p2 (--full)", "never counted as passed")
+        st = self.progress()
+        self.assertEqual((st["passed_steps"], st["total"], st["full_run"], st["full_not_run"]),
+                         (["p1", "p3"], 2, False, ["p2"]))
+        r = self.run_parts(doc, "--json")
+        self.assertEqual(checkjson.validate(r.stdout, r.returncode), [])
+        c = {x["name"]: x for x in json.loads(r.stdout)["checks"]}
+        self.assertEqual(list(c), ["p1", "p2", "p3"], "the file's order")
+        self.assertEqual((c["p2"]["status"], c["p2"]["reason"], c["p2"]["counts"]),
+                         ("unchecked", "not run: a `full` part (takes an hour); --full runs it", {"failed": 0}))
+        # the counterfactual: --full runs it
+        (self.base / "ran").unlink()
+        r = self.run_parts(doc, "--full")
+        self.assertEqual(sorted((self.base / "ran").read_text().split()), ["p1", "p2", "p3"])
+        self.assertEqual(r.stdout.splitlines()[-1], "check: 3 of 3 passed")
+        self.assertNotIn("full  ", r.stdout)
+        st = self.progress()
+        self.assertEqual((sorted(st["passed_steps"]), st["full_run"], st["full_not_run"]),
+                         (["p1", "p2", "p3"], True, []))
+        # --full --resume resumes over every part; a plain --resume never runs the full one
+        (self.base / "ran").unlink()
+        write(self.base / "a.txt", "changed\n")
+        self.run_parts(doc, "--full", "--resume")
+        self.assertEqual(sorted((self.base / "ran").read_text().split()), ["p1", "p2", "p3"])
+        (self.base / "ran").unlink()
+        r = self.run_parts(doc, "--resume")
+        self.assertFalse((self.base / "ran").exists(), r.stdout)
+        self.assertEqual(r.stdout.splitlines()[-1], "check: 2 of 2 passed; full, not run: p2 (--full)")
+        p = subprocess.run([sys.executable, str(PARTS), "files", str(self.base / "parts.json"), "p2"],
+                           capture_output=True, text=True)
+        self.assertIn("full: takes an hour", p.stdout.splitlines())
+
+    def test_only_runs_a_full_part_it_names_and_a_suite_of_full_parts_is_refused(self):
+        doc = {"parts": [part("p1", run="echo p1 >> ran"), part("p2", run="echo p2 >> ran", full="slow")]}
+        r = self.run_parts(doc, "--only", "p2")
+        self.assertEqual(((self.base / "ran").read_text().split(), r.returncode), (["p2"], 0), r.stdout)
+        self.assertEqual(r.stdout.splitlines()[-1], "check: 1 of 1 passed; not run: 1 (--only)")
+        allfull = {"parts": [part("p1", full="slow")]}
+        r = self.run_parts(allfull)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("every part is `full`: a run without --full would run none", r.stderr)
+        r = self.run_parts(allfull, "--json")
+        self.assertEqual((r.returncode, checkjson.validate(r.stdout, r.returncode)), (2, []))
+        self.assertEqual(self.run_parts(allfull, "--full").returncode, 0, "the counterfactual")
+
+    def budget(self, r):
+        return [line for line in (r.stdout + r.stderr).splitlines() if line.startswith("budget: ")]
+
+    def test_an_over_budget_run_is_reported_naming_its_slowest_parts(self):
+        doc = {"parts": [part("quick"), part("slow", run="sleep 1.6"), part("mid", run="sleep 0.8")]}
+        r = self.run_parts(doc, env={"PARTS_BUDGET_S": "1"})
+        self.assertEqual(r.returncode, 0, "a finding, never a gate")
+        said = self.budget(r)
+        self.assertEqual(len(said), 1, r.stdout)
+        self.assertRegex(said[0], r"^budget: over: [\d.]+s wall, over the 1s budget \(PARTS_BUDGET_S\); "
+                                  r"slowest: slow \d+s, mid \d+s, quick \d+s; tag a slow part `full`")
+        self.assertEqual(r.stdout.splitlines()[-3], said[0], "before the time: and summary lines")
+        b = self.progress()["budget"]
+        self.assertEqual((b["budget_s"], b["from"], b["over"], b["why"], [s["name"] for s in b["slowest"]]),
+                         (1.0, "PARTS_BUDGET_S", True, None, ["slow", "mid", "quick"]))
+        self.assertGreater(b["wall_s"], 1.0)
+        r = self.run_parts(doc, "--json", env={"PARTS_BUDGET_S": "1"})
+        self.assertEqual(checkjson.validate(r.stdout, r.returncode), [], "stdout stays one document")
+        self.assertEqual(len(self.budget(r)), 1, "--json says it on stderr")
+        # the counterfactual: the same run under its budget says nothing, and records over false
+        r = self.run_parts(doc, env={"PARTS_BUDGET_S": "60"})
+        self.assertEqual(self.budget(r), [])
+        self.assertIs(self.progress()["budget"]["over"], False)
+        # no override: the one record, BUDGET_S
+        self.run_parts({"parts": [part("p1")]})
+        b = self.progress()["budget"]
+        self.assertEqual((b["budget_s"], b["from"], b["over"]), (300, "parts.py BUDGET_S", False))
+        for bad in ("0", "-5", "soon", "nan", "inf"):
+            r = self.run_parts(doc, env={"PARTS_BUDGET_S": bad})
+            self.assertEqual(r.returncode, 2, bad)
+            self.assertIn("PARTS_BUDGET_S", r.stderr, bad)
+
+    def test_the_budget_judges_only_a_whole_short_run(self):
+        doc = {"parts": [part("slow", run="sleep 1.2"), part("p2", files=["b.txt"])]}
+        env = {"PARTS_BUDGET_S": "1"}
+        for flags, why in [(("--full",), "a --full run: the budget is the commit gate's"),
+                           (("--only", "slow"), "an --only run covers part of the suite")]:
+            r = self.run_parts(doc, *flags, env=env)
+            self.assertEqual(self.budget(r), [], flags)
+            self.assertEqual((self.progress()["budget"]["over"], self.progress()["budget"]["why"]), (None, why))
+        self.run_parts(doc)
+        write(self.base / "b.txt", "changed\n")
+        self.run_parts(doc, "--resume", env=env)
+        b = self.progress()["budget"]
+        self.assertEqual((b["over"], b["why"]), (None, "--resume skipped 1 part(s): under the budget proves nothing"))
+
+    def hold(self, holder):
+        """The lock taken by this test process, the file naming `holder`."""
+        import fcntl
+        self.lock().parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(self.lock(), os.O_RDWR | os.O_CREAT)
+        self.addCleanup(os.close, fd)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        os.write(fd, json.dumps(holder).encode())
+        return fd
+
+    def test_a_held_lock_exits_3_naming_the_holder_and_writes_nothing(self):
+        doc = {"parts": [part("p1", run="echo p1 >> ran")]}
+        fd = self.hold({"pid": os.getpid(), "started": "2026-11-03T02:30:00Z", "parts": "/x/check.parts.json"})
+        r = self.run_parts(doc, "--full")
+        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
+        self.assertIn(f"a full run holds the lock {self.lock()}: pid {os.getpid()}, started 2026-11-03T02:30:00Z "
+                      "(/x/check.parts.json); one full run at a time on this machine", r.stderr)
+        self.assertFalse((self.base / "ran").exists() or self.pf.exists(), "nothing ran, nothing written")
+        r = self.run_parts(doc, "--full", "--json")
+        self.assertEqual(r.returncode, 3)
+        self.assertEqual(checkjson.validate(r.stdout, r.returncode), [])
+        self.assertEqual(json.loads(r.stdout)["checks"][0]["name"], "full-lock")
+        self.assertEqual(self.run_parts(doc).returncode, 0, "the lock is the --full runs' alone")
+        (self.base / "ran").unlink()
+        os.ftruncate(fd, 0)
+        import fcntl
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        r = self.run_parts(doc, "--full")
+        self.assertEqual((r.returncode, r.stderr), (0, ""), "the counterfactual: released, it runs, saying nothing")
+        self.assertEqual(self.lock().read_text(), "", "a run releases the lock it took")
+
+    def test_a_full_run_holds_the_lock_while_it_runs(self):
+        """A part of a --full run starts a second --full run: it exits 3 naming
+        the first runner's pid; a part of a plain run starts one that runs."""
+        inner = write(self.base / "inner.json", json.dumps({"parts": [part("i1")]}))
+        nested = (f"PROGRESS_FILE={self.tmp}/inner.json {sys.executable} {PARTS} run {inner} --full > inner.out 2>&1;"
+                  f" echo $? > inner.exit; cat {self.lock()} > lock.seen")
+        doc = {"parts": [part("p1", run=nested)]}
+        r = self.run_parts(doc, "--full")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual((self.base / "inner.exit").read_text().strip(), "3", (self.base / "inner.out").read_text())
+        holder = json.loads((self.base / "lock.seen").read_text())
+        self.assertEqual(holder["parts"], str(self.base / "parts.json"))
+        self.assertIn(f"pid {holder['pid']}, started {holder['started']}", (self.base / "inner.out").read_text())
+        self.run_parts(doc)
+        self.assertEqual((self.base / "inner.exit").read_text().strip(), "0", "the counterfactual: no lock held")
+
+    def test_a_lock_left_by_a_dead_pid_is_stale_and_taken(self):
+        p = subprocess.Popen(["true"])
+        p.wait()
+        write(self.lock(), json.dumps({"pid": p.pid, "started": "2026-11-02T02:30:00Z", "parts": "/y/p.json"}))
+        r = self.run_parts({"parts": [part("p1")]}, "--full")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(f"full-run lock: stale: pid {p.pid}, started 2026-11-02T02:30:00Z (/y/p.json) is not running "
+                      f"and never released {self.lock()}; taken", r.stderr)
+        self.assertEqual(self.lock().read_text(), "")
+        write(self.lock(), "{torn")
+        r = self.run_parts({"parts": [part("p1")]}, "--full")
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("stale: an unknown holder (the lock file is unreadable)", r.stderr)
+
+    def test_a_lock_that_cannot_be_opened_exits_3(self):
+        r = self.run_parts({"parts": [part("p1", run="echo p1 >> ran")]}, "--full",
+                           env={"PARTS_FULL_LOCK": str(self.base / "a.txt" / "lock")})
+        self.assertEqual(r.returncode, 3)
+        self.assertIn("cannot open the full-run lock", r.stderr)
+        self.assertIn("a --full run never runs unlocked", r.stderr)
+        self.assertFalse((self.base / "ran").exists())
 
     # ---- the file as a dependency -----------------------------------------
 
@@ -617,9 +795,14 @@ class Parts(Case):
         doc = json.loads(p.stdout)
         self.assertEqual((doc["version"], doc["commands"]), (parts.VERSION, sorted(parts.COMMANDS)))
         run = doc["run"]
-        self.assertEqual([o["flag"] for o in run["options"]], ["--resume", "--only", "--jobs", "--json", "--record"])
+        self.assertEqual([o["flag"] for o in run["options"]],
+                         ["--resume", "--only", "--full", "--jobs", "--json", "--record"])
         self.assertIn(f"  {run['usage']}\n", parts.__doc__, "the docstring's run line is the built one")
-        self.assertEqual(run["usage"], "parts.py run <parts.json> [--resume | --only <name>...] [--jobs <n>] [--json] [--record]")
+        self.assertEqual(run["usage"], "parts.py run <parts.json> [--resume | --only <name>...] [--full] [--jobs <n>]"
+                                       " [--json] [--record]")
+        self.assertEqual(run["exclusive"], [["--resume", "--only"], ["--full", "--only"]])
+        self.assertEqual((doc["budget_s"], doc["full_lock"]), (parts.BUDGET_S, "~/.claude/parts-full.lock"))
+        self.assertEqual(parts.BUDGET_S, 300, "PLAN-check-progress.md §13: 300 s of wall time")
         for o in run["options"]:
             words = [o["flag"]] + (["1"] if o["value"] else [])
             with self.subTest(flag=o["flag"]):

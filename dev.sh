@@ -19,7 +19,7 @@ usage() {
   cat <<'EOF'
 ./dev.sh <command>
 
-  check      every part of check.parts.json (a part per test module, then fixtures, run, audit), each with its own timeout; ends "check: N of M passed; failed: ..."; non-zero if any fails (--json: schema/check-json.schema.json; --resume: only the parts whose files changed since they passed; --only <part>: just that part; CHECK_PARTS=<file>: that file's parts instead)
+  check      every part of check.parts.json (a part per test module, then fixtures, run, audit), each with its own timeout; ends "check: N of M passed; failed: ..."; non-zero if any fails (--json: schema/check-json.schema.json; --resume: only the parts whose files changed since they passed; --only <part>: just that part; --full: the parts tagged `full` too, one full run at a time on the machine; CHECK_PARTS=<file>: that file's parts instead)
   test       the CLI's unit tests, all at once (python3 -m unittest, tests/test_*.py); `test <part>...`: just those parts of check.parts.json (check --only <part>...), results in the progress file, so a later check --resume skips them while their files are unchanged
   fixtures   every check against its own passing and failing fixture (./checks fixtures)
   run        every check that applies to this repo, on this repo (./checks run .)

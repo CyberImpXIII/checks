@@ -2,6 +2,39 @@
 
 ## Own bugs
 
+- parts.py 1.7.0 (tl-723, 2026-11-03, PLAN-check-progress.md §13 step 1):
+  a part's `full` (why, a string) runs only under `--full`; a plain run
+  reports it `full  <name>` / summary `; full, not run: <names> (--full)` /
+  --json `unchecked`, never passed; `--full` holds an flock on
+  `~/.claude/parts-full.lock` ($PARTS_FULL_LOCK), exit 3 naming pid, start
+  time and parts file, a lock left by a dead holder said stale and taken;
+  every run records `budget` in the progress file against BUDGET_S (300,
+  `usage --json` budget_s; $PARTS_BUDGET_S overrides, recorded as such), a
+  short run over it says `budget: over: ...` naming its 3 slowest parts.
+  Held by tests/test_parts.py (8 tests, each with its counterfactual run).
+  Open:
+  - the todo detect filing of an over-budget run is NOT in the runner (it is
+    standard-library and content-agnostic; the handoff's open question). My
+    answer: the caller reads `.progress/<stem>.json` `budget.over` -- setup's
+    audit-day, or a todo detector over each repo's progress file. Reported
+    to setup (tl-723 report). Until one exists, the finding is said and
+    recorded but files nothing.
+  - setup must re-render devtools/parts.py (1.7.0) and fan it out
+    (`./setup . --only parts`, `setup fanout parts`); every copy drifts until then.
+  - unverified: harness's `agents.sh check` (tl-541) guards with its own
+    progress-file pid check, not this lock, so it and a repo's `--full` can
+    still run at once -- settle: from .claude, `grep -n parts-full.lock
+    lib/progress.sh agents.sh` (expect nothing).
+  - a plain run rewrites the progress file without the full parts' passes
+    from an earlier `--full` run (header says so): `--full --resume` after a
+    plain run reruns every full part.
+  - not gated: that a part tagged `full` is really the slow one, or that an
+    untagged part fits the budget beyond the run that measures it (the
+    budget line is the only signal).
+  - pre-existing, by reading: two concurrent runs of one parts file write
+    one progress file (only --resume refuses a live writer). The lock covers
+    --full only.
+
 - Tool registration (tl-312, 2026-10-19, PLAN-architecture.md §9 step
   10.1): services.json schema gains optional `description`, `stores`,
   `shapes {reads, emits}`; x-rules `description-one-line` and
